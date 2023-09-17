@@ -4,8 +4,8 @@ WORKDIR /application
 COPY application/go.mod ./
 RUN go mod download && go mod verify
 COPY application/*.go ./
-ARG TARGETOS=linux
-ARG TARGETARCH=amd64
+ARG TARGETOS
+ARG TARGETARCH
 RUN GOOS=$TARGETOS GOARCH=$TARGETARCH go build --tags netgo -ldflags="-w -s" -o /socket-proxy .
 
 FROM scratch
