@@ -5,7 +5,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	"log"
+	"log/slog"
 	"net"
 	"net/http"
 	"net/http/httputil"
@@ -13,21 +13,22 @@ import (
 	"os"
 	"os/signal"
 	"runtime"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
 )
 
 const (
-	programName = "socket-proxy"
-	version     = "0.1.0"
-	programUrl  = "github.com/wollomatic/socket-proxy"
+	version                 = "0.1.0"
+	programUrl              = "github.com/wollomatic/socket-proxy"
+	logSourcePosition       = true // set to true to log the source position (file and line) of the log message
+	maxGracefulShutdownTime = 10   // Maximum time in seconds to wait for the server to shut down gracefully
 )
 
-const (
-	dockerSocketPath        = "/var/run/docker.sock" // path to the docker socket
-	tcpServerPort           = "2375"                 // tcp port to listen on
-	maxGracefulShutdownTime = 10                     // Maximum time in seconds to wait for the server to shut down gracefully
+var (
+	socketPath    = ""     // path to the unix socket
+	tcpServerPort = "2375" // tcp port to listen on
 )
 
 // allowedPaths is a list of path substrings that are allowed to be proxied.
@@ -40,24 +41,65 @@ var allowedPaths = []string{
 
 var socketProxy *httputil.ReverseProxy
 
-var logAll *bool
-
-// init parses the command line flags.
+// init parses the command line flags and sets up the logger.
 func init() {
-	logAll = flag.Bool("log", false, "log allowed requests (otherwise only blocked requests are logged)")
+	var (
+		logLevelStr string
+		logLevel    slog.Level
+		logJson     bool
+		logger      *slog.Logger
+	)
 
+	flag.StringVar(&socketPath, "socket", "/var/run/docker.sock", "set socket path to connect to (default: /var/run/docker.sock)")
+	flag.StringVar(&tcpServerPort, "port", "2375", "tcp port to listen on (default: 2375)")
+	flag.StringVar(&logLevelStr, "loglevel", "INFO", "set log level: DEBUG, INFO, WARN, ERROR (default: INFO)")
+	flag.BoolVar(&logJson, "json", false, "log in JSON format")
 	flag.Parse()
+
+	switch strings.ToUpper(logLevelStr) {
+	case "DEBUG":
+		logLevel = slog.LevelDebug
+	case "INFO":
+		logLevel = slog.LevelInfo
+	case "WARN":
+		logLevel = slog.LevelWarn
+	case "ERROR":
+		logLevel = slog.LevelError
+	default:
+		fmt.Fprintln(os.Stderr, "Invalid log level. Supported levels are DEBUG, INFO, WARN, ERROR")
+		os.Exit(1)
+	}
+
+	logOps := &slog.HandlerOptions{
+		AddSource: logSourcePosition,
+		Level:     logLevel,
+	}
+	if logJson {
+		logger = slog.New(slog.NewJSONHandler(os.Stdout, logOps))
+	} else {
+		logger = slog.New(slog.NewTextHandler(os.Stdout, logOps))
+	}
+	slog.SetDefault(logger)
 }
 
 func main() {
-	log.Printf("--- Starting %s %s (%s, %s, %s) %s ---\n", programName, version, runtime.GOOS, runtime.GOARCH, runtime.Version(), programUrl)
+	slog.Info("starting socket-proxy", "version", version, "os", runtime.GOOS, "arch", runtime.GOARCH, "runtime", runtime.Version(), "URL", programUrl)
+
+	// parse tcpServerPort to check if it is a valid port number
+	port, err := strconv.Atoi(tcpServerPort)
+	if err != nil || port < 1 || port > 65535 {
+		slog.Error("port number has to be between 1 and 65535")
+		os.Exit(2)
+	}
+
+	slog.Info("proxy configuration", "socket", socketPath, "port", tcpServerPort)
 
 	// define the reverse proxy
 	socketUrlDummy, _ := url.Parse("http://localhost") // dummy URL - we use the unix socket
 	socketProxy = httputil.NewSingleHostReverseProxy(socketUrlDummy)
 	socketProxy.Transport = &http.Transport{
 		DialContext: func(_ context.Context, _, _ string) (net.Conn, error) {
-			return net.Dial("unix", dockerSocketPath)
+			return net.Dial("unix", socketPath)
 		},
 	}
 
@@ -68,7 +110,8 @@ func main() {
 	}
 	go func() {
 		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			log.Fatalf("listen: %s\n", err)
+			slog.Error("http server problem", "error", err)
+			os.Exit(2)
 		}
 	}()
 
@@ -78,14 +121,14 @@ func main() {
 	<-quit
 
 	// Try to shut down gracefully
-	log.Println("received stop signal - shutting down")
+	slog.Info("received stop signal - shutting down")
 	ctx, cancel := context.WithTimeout(context.Background(), maxGracefulShutdownTime*time.Second)
 	defer cancel()
 	if err := srv.Shutdown(ctx); err != nil {
-		log.Printf("timeout (maybe client still running?): %v", err)
-		log.Fatalf("forcing shutdown")
+		slog.Warn("timeout stopping server (maybe client still running?) - forcing shutdown", "error", err)
+		os.Exit(3)
 	}
-	log.Println(programName, "graceful shutdown complete")
+	slog.Info("graceful shutdown complete - exiting")
 }
 
 // handleGetHeadRequest checks if the request is a GET or HEAD request and sends it to the proxy.
@@ -93,24 +136,22 @@ func main() {
 func handleGetHeadRequest(w http.ResponseWriter, r *http.Request) {
 	// only allow GET and HEAD requests
 	if (r.Method != http.MethodGet) && (r.Method != http.MethodHead) {
-		fmt.Println("block (bad method)", r.Method, r.URL)
+		slog.Warn("blocked request", "reason", "forbidden method", "method", r.Method, "URL", r.URL, "client", r.RemoteAddr)
 		http.Error(w, http.StatusText(http.StatusMethodNotAllowed), http.StatusMethodNotAllowed)
 		return
 	}
 
 	// check if the request URL path contains any of the allowed paths
 	for _, path := range allowedPaths {
+		// TODO: change this due to security reasons
 		if strings.Contains(r.URL.Path, path) {
-			if *logAll {
-				log.Println("allow", r.Method, r.URL)
-			}
+			slog.Debug("allowed request", "method", r.Method, "URL", r.URL, "client", r.RemoteAddr)
 			socketProxy.ServeHTTP(w, r) // proxy the request
 			return
 		}
 	}
 
 	// request URL path does not contain any of the allowed paths, so block the request
-	log.Println("block (bad url)", r.Method, r.URL)
+	slog.Warn("blocked request", "reason", "forbidden request path", "method", r.Method, "URL", r.URL, "client", r.RemoteAddr)
 	http.Error(w, http.StatusText(http.StatusForbidden), http.StatusForbidden)
-
 }
