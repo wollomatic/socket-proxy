@@ -28,4 +28,5 @@ jobs:
     - name: Build all platforms and push to Docker hub
       run: |
         echo "${{ secrets.DOCKERHUB_TOKEN }}" | docker login -u "${{ secrets.DOCKERHUB_USERNAME }}" --password-stdin docker.io
-        docker buildx build . --platform=linux/amd64,linux/arm64,linux/arm/v7,linux/s390x --tag ${{ env.IMAGE_NAME }}:${{ env.IMAGE_VERSION }} --tag ${{ env.IMAGE_NAME }}:latest --push
+#        docker buildx build . --platform=linux/amd64,linux/arm64,linux/arm/v7,linux/s390x --tag ${{ env.IMAGE_NAME }}:${{ env.IMAGE_VERSION }} --tag ${{ env.IMAGE_NAME }}:latest --push
+        docker buildx build . --platform=linux/amd64 --tag ${{ env.IMAGE_NAME }}:${{ env.IMAGE_VERSION }} --push
