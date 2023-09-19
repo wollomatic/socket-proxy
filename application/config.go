@@ -4,6 +4,7 @@ import (
 	"flag"
 	"fmt"
 	"log/slog"
+	"net"
 	"os"
 	"strconv"
 	"strings"
@@ -17,10 +18,11 @@ const (
 )
 
 var (
-	logLevel      = "INFO"                 // log level as string
-	logJSON       = false                  // log in JSON format
-	socketPath    = "/var/run/docker.sock" // path to the unix socket
-	tcpServerPort = "2375"                 // tcp port to listen on
+	allowFrom  = "0.0.0.0/0"            // allowed IPs to connect to the proxy
+	logJSON    = false                  // if true, log in JSON format
+	logLevel   = "INFO"                 // log level as string
+	proxyPort  = "2375"                 // tcp port to listen on
+	socketPath = "/var/run/docker.sock" // path to the unix socket
 )
 
 // init parses the command line flags and sets up the logger.
@@ -30,14 +32,22 @@ func initConfig() {
 		logger    *slog.Logger
 	)
 
-	flag.StringVar(&socketPath, "socket", socketPath, "unix socket path to connect to")
-	flag.StringVar(&tcpServerPort, "port", tcpServerPort, "tcp port to listen on")
-	flag.StringVar(&logLevel, "loglevel", logLevel, "set log level: DEBUG, INFO, WARN, ERROR")
+	flag.StringVar(&allowFrom, "allowfrom", allowFrom, "allowed IPs to connect to the proxy")
 	flag.BoolVar(&logJSON, "logjson", logJSON, "log in JSON format (otherwise log in plain text")
+	flag.StringVar(&logLevel, "loglevel", logLevel, "set log level: DEBUG, INFO, WARN, ERROR")
+	flag.StringVar(&proxyPort, "proxyport", proxyPort, "tcp port to listen on")
+	flag.StringVar(&socketPath, "socketpath", socketPath, "unix socket path to connect to")
 	flag.Parse()
 
-	// parse tcpServerPort to check if it is a valid port number
-	port, err := strconv.Atoi(tcpServerPort)
+	var err error
+	_, allowedNetwork, err = net.ParseCIDR(allowFrom)
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+
+	// parse proxyPort to check if it is a valid port number
+	port, err := strconv.Atoi(proxyPort)
 	if err != nil || port < 1 || port > 65535 {
 		slog.Error("port number has to be between 1 and 65535")
 		os.Exit(2)

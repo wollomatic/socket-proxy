@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net"
 	"net/http"
@@ -24,12 +25,16 @@ var allowedPaths = []string{
 	"containers",
 }
 
-var socketProxy *httputil.ReverseProxy
+var (
+	allowedNetwork *net.IPNet
+	socketProxy    *httputil.ReverseProxy
+)
 
 func main() {
 	slog.Info("starting socket-proxy", "version", version, "os", runtime.GOOS, "arch", runtime.GOARCH, "runtime", runtime.Version(), "URL", programUrl)
 	initConfig()
-	slog.Info("configuration is", "socket", socketPath, "port", tcpServerPort, "loglevel", logLevel, "logjson", logJSON)
+	slog.Info("configuration is", "socketpath", socketPath, "proxyport", proxyPort, "loglevel", logLevel, "logjson", logJSON, "allowcidr", allowFrom)
+	fmt.Println(allowedNetwork)
 
 	// define the reverse proxy
 	socketUrlDummy, _ := url.Parse("http://localhost") // dummy URL - we use the unix socket
@@ -42,7 +47,7 @@ func main() {
 
 	// start the server in a goroutine
 	srv := &http.Server{
-		Addr:    ":" + tcpServerPort,
+		Addr:    ":" + proxyPort,
 		Handler: http.HandlerFunc(handleGetHeadRequest),
 	}
 	go func() {
@@ -71,6 +76,33 @@ func main() {
 // handleGetHeadRequest checks if the request is a GET or HEAD request and sends it to the proxy.
 // otherwise it returns a 405 Method Not Allowed error.
 func handleGetHeadRequest(w http.ResponseWriter, r *http.Request) {
+
+	var (
+		ipStr string
+		ip    net.IP
+	)
+
+	index := strings.Index(r.RemoteAddr, ":")
+	if index > -1 {
+		ipStr = r.RemoteAddr[:index]
+	} else {
+		slog.Error("invalid RemoteAddr format", "reason", "colon missing", "method", r.Method, "URL", r.URL, "client", r.RemoteAddr)
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		return
+	}
+	ip = net.ParseIP(ipStr)
+	if ip == nil {
+		slog.Error("invalid RemoteAddr format", "reason", "parse error", "method", r.Method, "URL", r.URL, "client", r.RemoteAddr)
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		return
+	}
+
+	if !allowedNetwork.Contains(ip) {
+		slog.Warn("blocked request", "reason", "forbidden IP", "method", r.Method, "URL", r.URL, "client", r.RemoteAddr)
+		http.Error(w, http.StatusText(http.StatusForbidden), http.StatusForbidden)
+		return
+	}
+
 	// only allow GET and HEAD requests
 	if (r.Method != http.MethodGet) && (r.Method != http.MethodHead) {
 		slog.Warn("blocked request", "reason", "forbidden method", "method", r.Method, "URL", r.URL, "client", r.RemoteAddr)
