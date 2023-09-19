@@ -15,14 +15,6 @@ import (
 	"time"
 )
 
-// allowedPaths is a list of path substrings that are allowed to be proxied.
-// If the request URL path does not contain any of these substrings, the request is blocked.
-var allowedPaths = []string{
-	"version",
-	"events",
-	"containers",
-}
-
 var (
 	allowedNetwork *net.IPNet
 	socketProxy    *httputil.ReverseProxy

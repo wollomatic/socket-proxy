@@ -4,8 +4,26 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"regexp"
 	"strings"
 )
+
+// allowedPaths is a list of path substrings that are allowed to be proxied.
+// If the request URL path does not contain any of these substrings, the request is blocked.
+var allowedPaths = []string{
+	"version",
+	"events",
+	"containers",
+}
+
+var (
+	allowedRegexString = `^/v1\..{1,2}/(version|containers/.*|events\?filters=%7B%22type%22%3A%7B%22container%22%3Atrue%7D%7D)$`
+	allowedRegex       *regexp.Regexp
+)
+
+func init() {
+	allowedRegex = regexp.MustCompile(allowedRegexString)
+}
 
 // handleHttpRequest checks if the request is allowed and sends it to the proxy.
 // Otherwise, it returns a 405 Method Not Allowed error.
@@ -43,14 +61,11 @@ func handleHttpRequest(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// check if the request URL path contains any of the allowed paths
-	for _, path := range allowedPaths {
-		// TODO: change this due to security reasons
-		if strings.Contains(r.URL.Path, path) {
-			slog.Debug("allowed request", "method", r.Method, "URL", r.URL, "client", r.RemoteAddr)
-			socketProxy.ServeHTTP(w, r) // proxy the request
-			return
-		}
+	// check the request URL path
+	if allowedRegex.MatchString(r.URL.Path) {
+		slog.Debug("allowed request", "method", r.Method, "URL", r.URL, "client", r.RemoteAddr)
+		socketProxy.ServeHTTP(w, r) // proxy the request
+		return
 	}
 
 	// request URL path does not contain any of the allowed paths, so block the request
