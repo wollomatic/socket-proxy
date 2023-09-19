@@ -31,7 +31,7 @@ var (
 func main() {
 	slog.Info("starting socket-proxy", "version", version, "os", runtime.GOOS, "arch", runtime.GOARCH, "runtime", runtime.Version(), "URL", programUrl)
 	initConfig()
-	slog.Info("configuration is", "socketpath", socketPath, "proxyport", proxyPort, "loglevel", logLevel, "logjson", logJSON, "allowcidr", allowFrom)
+	slog.Info("configuration is", "socketpath", socketPath, "proxyport", proxyPort, "loglevel", logLevel, "logjson", logJSON, "allowfrom", allowFrom)
 
 	// define the reverse proxy
 	socketUrlDummy, _ := url.Parse("http://localhost") // dummy URL - we use the unix socket
