@@ -13,8 +13,8 @@ import (
 const (
 	version                 = "0.1.0"
 	programUrl              = "github.com/wollomatic/socket-proxy"
-	logSourcePosition       = true // set to true to log the source position (file and line) of the log message
-	maxGracefulShutdownTime = 10   // Maximum time in seconds to wait for the server to shut down gracefully
+	logSourcePosition       = false // set to true to log the source position (file and line) of the log message
+	maxGracefulShutdownTime = 10    // Maximum time in seconds to wait for the server to shut down gracefully
 )
 
 var (
