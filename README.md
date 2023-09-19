@@ -69,7 +69,13 @@ networks:
 
 ### Parameters
 
-Use ``-log`` to log all requests to stdout. Otherwise, only bad requests and some startup/shutdown information are logged.
+| Parameter | Default Value          | Description                                                                                                                                           |
+| --- |------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `-allowfrom` | `0.0.0.0/0`            | Specifies the IP addresses of the clients that are allowed to connect to the proxy. The default value is `0.0.0.0/0`, which means all IPs are allowed. |
+| `-logjson`  | (not set)              | If set, it enables logging in JSON format. If unset, docker-proxy logs in plain text format.                                                          |
+| `-loglevel` | `INFO`                 | Sets the log level. Accepted values are: `DEBUG`, `INFO`, `WARN`, `ERROR`.                                                                             |
+| `-proxyport` | `2375`                 | Defines the TCP port the proxy listens to.                                                                                                            |
+| `-socketpath` | `/var/run/docker.sock` | Specifies the UNIX socket path to connect to. By default, it connects to the Docker daemon socket.                                                    |
 
 ## License <a name = "license"></a>
 
