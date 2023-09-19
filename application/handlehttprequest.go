@@ -17,7 +17,7 @@ var allowedPaths = []string{
 }
 
 var (
-	allowedRegexString = `^/v1\..{1,2}/(version|containers/.*|events\?filters=%7B%22type%22%3A%7B%22container%22%3Atrue%7D%7D)$`
+	allowedRegexString = `^/v1\..{1,2}/(version|containers/.*|events.*)$`
 	allowedRegex       *regexp.Regexp
 )
 
