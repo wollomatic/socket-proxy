@@ -53,7 +53,7 @@ func initConfig() {
 	case "ERROR":
 		slogLevel = slog.LevelError
 	default:
-		fmt.Fprintln(os.Stderr, "Invalid log level. Supported levels are DEBUG, INFO, WARN, ERROR")
+		_, _ = fmt.Fprintln(os.Stderr, "Invalid log level. Supported levels are DEBUG, INFO, WARN, ERROR")
 		os.Exit(1)
 	}
 
