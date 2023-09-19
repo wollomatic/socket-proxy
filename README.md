@@ -35,17 +35,17 @@ The container image is available on [Docker Hub: wollomatic/socket-proxy](https:
 
 As of the early stage of this project, there is only an image with the "testing" tag available: ``wollomatic/socket-proxy:testing``
 
-The image can be deployed with docker-compose:
+The image can be deployed with docker compose:
 
 ``` compose.yaml
 services:
   dockerproxy:
     image: wollomatic/socket-proxy:testing
     read_only: true
+    user: "65534:<<your docker group id>>"
     restart: unless-stopped
-    # uncomment the following line to log all requests to stdout
-    # command:
-    #   - -log
+    command:
+      - -loglevel=DEBUG
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
     networks:

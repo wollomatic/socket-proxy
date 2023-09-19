@@ -3,8 +3,6 @@ package main
 import (
 	"context"
 	"errors"
-	"flag"
-	"fmt"
 	"log/slog"
 	"net"
 	"net/http"
@@ -13,22 +11,9 @@ import (
 	"os"
 	"os/signal"
 	"runtime"
-	"strconv"
 	"strings"
 	"syscall"
 	"time"
-)
-
-const (
-	version                 = "0.1.0"
-	programUrl              = "github.com/wollomatic/socket-proxy"
-	logSourcePosition       = true // set to true to log the source position (file and line) of the log message
-	maxGracefulShutdownTime = 10   // Maximum time in seconds to wait for the server to shut down gracefully
-)
-
-var (
-	socketPath    = ""     // path to the unix socket
-	tcpServerPort = "2375" // tcp port to listen on
 )
 
 // allowedPaths is a list of path substrings that are allowed to be proxied.
@@ -41,58 +26,10 @@ var allowedPaths = []string{
 
 var socketProxy *httputil.ReverseProxy
 
-// init parses the command line flags and sets up the logger.
-func init() {
-	var (
-		logLevelStr string
-		logLevel    slog.Level
-		logJson     bool
-		logger      *slog.Logger
-	)
-
-	flag.StringVar(&socketPath, "socket", "/var/run/docker.sock", "set socket path to connect to (default: /var/run/docker.sock)")
-	flag.StringVar(&tcpServerPort, "port", "2375", "tcp port to listen on (default: 2375)")
-	flag.StringVar(&logLevelStr, "loglevel", "INFO", "set log level: DEBUG, INFO, WARN, ERROR (default: INFO)")
-	flag.BoolVar(&logJson, "json", false, "log in JSON format")
-	flag.Parse()
-
-	switch strings.ToUpper(logLevelStr) {
-	case "DEBUG":
-		logLevel = slog.LevelDebug
-	case "INFO":
-		logLevel = slog.LevelInfo
-	case "WARN":
-		logLevel = slog.LevelWarn
-	case "ERROR":
-		logLevel = slog.LevelError
-	default:
-		fmt.Fprintln(os.Stderr, "Invalid log level. Supported levels are DEBUG, INFO, WARN, ERROR")
-		os.Exit(1)
-	}
-
-	logOps := &slog.HandlerOptions{
-		AddSource: logSourcePosition,
-		Level:     logLevel,
-	}
-	if logJson {
-		logger = slog.New(slog.NewJSONHandler(os.Stdout, logOps))
-	} else {
-		logger = slog.New(slog.NewTextHandler(os.Stdout, logOps))
-	}
-	slog.SetDefault(logger)
-}
-
 func main() {
 	slog.Info("starting socket-proxy", "version", version, "os", runtime.GOOS, "arch", runtime.GOARCH, "runtime", runtime.Version(), "URL", programUrl)
-
-	// parse tcpServerPort to check if it is a valid port number
-	port, err := strconv.Atoi(tcpServerPort)
-	if err != nil || port < 1 || port > 65535 {
-		slog.Error("port number has to be between 1 and 65535")
-		os.Exit(2)
-	}
-
-	slog.Info("proxy configuration", "socket", socketPath, "port", tcpServerPort)
+	initConfig()
+	slog.Info("configuration is", "socket", socketPath, "port", tcpServerPort, "loglevel", logLevel, "logjson", logJSON)
 
 	// define the reverse proxy
 	socketUrlDummy, _ := url.Parse("http://localhost") // dummy URL - we use the unix socket
