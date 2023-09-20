@@ -27,7 +27,7 @@ func main() {
 	for _, rx := range mr {
 		// show allowed requests
 		if rx.regexCompiled != nil {
-			slog.Debug("allowed request", "method", rx.method, "regex", rx.regexCompiled)
+			slog.Debug("configured allowed request", "method", rx.method, "regex", rx.regexCompiled)
 		}
 	}
 
