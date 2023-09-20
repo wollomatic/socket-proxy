@@ -5,7 +5,9 @@ import (
 	"fmt"
 	"log/slog"
 	"net"
+	"net/http"
 	"os"
+	"regexp"
 	"strconv"
 	"strings"
 )
@@ -18,12 +20,34 @@ const (
 )
 
 var (
-	allowFrom  = "0.0.0.0/0"            // allowed IPs to connect to the proxy
+	allowFrom  = "127.0.0.1/32"         // allowed IPs to connect to the proxy
 	logJSON    = false                  // if true, log in JSON format
 	logLevel   = "INFO"                 // log level as string
 	proxyPort  = "2375"                 // tcp port to listen on
 	socketPath = "/var/run/docker.sock" // path to the unix socket
 )
+
+// used for list of allowed requests
+type methodRegex struct {
+	method        string
+	regexString   string
+	regexCompiled *regexp.Regexp
+}
+
+// mr is the allowlist of requests per http method
+// default: regegString is empty, so regexCompiled stays nil and the request is blocked
+// if regexString is set with a command line parameter, all requests matching the method and path matching the regex are allowed
+var mr = []methodRegex{
+	{method: http.MethodGet},
+	{method: http.MethodHead},
+	{method: http.MethodPost},
+	{method: http.MethodPut},
+	{method: http.MethodPatch},
+	{method: http.MethodDelete},
+	{method: http.MethodConnect},
+	{method: http.MethodTrace},
+	{method: http.MethodOptions},
+}
 
 // init parses the command line flags and sets up the logger.
 func initConfig() {
@@ -31,28 +55,32 @@ func initConfig() {
 		slogLevel slog.Level
 		logger    *slog.Logger
 	)
-
 	flag.StringVar(&allowFrom, "allowfrom", allowFrom, "allowed IPs to connect to the proxy")
 	flag.BoolVar(&logJSON, "logjson", logJSON, "log in JSON format (otherwise log in plain text")
 	flag.StringVar(&logLevel, "loglevel", logLevel, "set log level: DEBUG, INFO, WARN, ERROR")
 	flag.StringVar(&proxyPort, "proxyport", proxyPort, "tcp port to listen on")
 	flag.StringVar(&socketPath, "socketpath", socketPath, "unix socket path to connect to")
+	for i := 0; i < len(mr); i++ {
+		flag.StringVar(&mr[i].regexString, "allow"+mr[i].method, mr[i].regexString, "regex for "+mr[i].method+" requests (not set means method is not allowed)")
+	}
 	flag.Parse()
 
+	// parse allowFrom to check if it is a valid CIDR
 	var err error
 	_, allowedNetwork, err = net.ParseCIDR(allowFrom)
 	if err != nil {
-		fmt.Println(err)
-		return
+		slog.Error("invalid CIDR in allowfrom parameter", "error", err)
+		os.Exit(1)
 	}
 
 	// parse proxyPort to check if it is a valid port number
 	port, err := strconv.Atoi(proxyPort)
 	if err != nil || port < 1 || port > 65535 {
 		slog.Error("port number has to be between 1 and 65535")
-		os.Exit(2)
+		os.Exit(1)
 	}
 
+	// parse logLevel and setup logging handler depending on logJSON
 	switch strings.ToUpper(logLevel) {
 	case "DEBUG":
 		slogLevel = slog.LevelDebug
@@ -66,7 +94,6 @@ func initConfig() {
 		_, _ = fmt.Fprintln(os.Stderr, "Invalid log level. Supported levels are DEBUG, INFO, WARN, ERROR")
 		os.Exit(1)
 	}
-
 	logOps := &slog.HandlerOptions{
 		AddSource: logSourcePosition,
 		Level:     slogLevel,
@@ -77,4 +104,16 @@ func initConfig() {
 		logger = slog.New(slog.NewTextHandler(os.Stdout, logOps))
 	}
 	slog.SetDefault(logger)
+
+	// Iterate per request method:
+	// Non-empty regexString means that the request is allowed. In that case, compile the regex
+	for i := 0; i < len(mr); i++ {
+		if mr[i].regexString != "" {
+			mr[i].regexCompiled, err = regexp.Compile("^" + mr[i].regexString + "$")
+			if err != nil {
+				slog.Error("invalid regex", "method", mr[i].method, "regex", mr[i].regexString, "error", err)
+				os.Exit(1)
+			}
+		}
+	}
 }

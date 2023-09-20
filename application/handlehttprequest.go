@@ -4,26 +4,8 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
-	"regexp"
 	"strings"
 )
-
-// allowedPaths is a list of path substrings that are allowed to be proxied.
-// If the request URL path does not contain any of these substrings, the request is blocked.
-var allowedPaths = []string{
-	"version",
-	"events",
-	"containers",
-}
-
-var (
-	allowedRegexString = `^/v1\..{1,2}/(version|containers/.*|events.*)$`
-	allowedRegex       *regexp.Regexp
-)
-
-func init() {
-	allowedRegex = regexp.MustCompile(allowedRegexString)
-}
 
 // handleHttpRequest checks if the request is allowed and sends it to the proxy.
 // Otherwise, it returns a 405 Method Not Allowed error.
@@ -54,22 +36,22 @@ func handleHttpRequest(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// only allow GET and HEAD requests
-	if (r.Method != http.MethodGet) && (r.Method != http.MethodHead) {
-		slog.Warn("blocked request", "reason", "forbidden method", "method", r.Method, "URL", r.URL, "client", r.RemoteAddr)
-		sendHTTPError(w, http.StatusMethodNotAllowed)
-		return
+	// iterate over the list of http methods and check if the request is allowed
+	for _, allowed := range mr {
+		// stop if the method does not match or the method is not allowed (no compiled regex)
+		if (allowed.method != r.Method) || (allowed.regexCompiled == nil) {
+			continue
+		}
+		// check if the request URL path matches the allowed regex
+		if allowed.regexCompiled.MatchString(r.URL.Path) {
+			slog.Debug("allowed request", "method", r.Method, "URL", r.URL, "client", r.RemoteAddr)
+			socketProxy.ServeHTTP(w, r) // proxy the request
+			return
+		}
 	}
 
-	// check the request URL path
-	if allowedRegex.MatchString(r.URL.Path) {
-		slog.Debug("allowed request", "method", r.Method, "URL", r.URL, "client", r.RemoteAddr)
-		socketProxy.ServeHTTP(w, r) // proxy the request
-		return
-	}
-
-	// request URL path does not contain any of the allowed paths, so block the request
-	slog.Warn("blocked request", "reason", "forbidden request path", "method", r.Method, "URL", r.URL, "client", r.RemoteAddr)
+	// at this point no allowed method/path was found, so block the request
+	slog.Warn("blocked request", "reason", "no allowed method/path matched", "method", r.Method, "URL", r.URL, "client", r.RemoteAddr)
 	sendHTTPError(w, http.StatusForbidden)
 }
 
