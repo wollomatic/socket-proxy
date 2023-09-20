@@ -85,14 +85,13 @@ networks:
 
 ### Parameters
 
-| Parameter | Default Value          | Description                                                                                                                                                                                                                                                                   |
-| `-allowfrom` | `127.0.0.1/32`         | Specifies the IP addresses of the clients allowed to connect to the proxy. The default value is `127.0.0.1/32`, which means only localhost is allowed. This default configuration may not be useful in most cases, but it is because of a secure-by-default design. To allow all IPv4 addresses, set `-allowfrom=0.0.0.0/0`. Please remember that socket-proxy should never be exposed to a public network, regardless of this extra security layer. |
-| `-logjson`  | (not set)              | If set, it enables logging in JSON format. If unset, docker-proxy logs in plain text format.                                                                                                                                                                                  |
-| `-loglevel` | `INFO`                 | Sets the log level. Accepted values are: `DEBUG`, `INFO`, `WARN`, `ERROR`.                                                                                                                                                                                                    |
-| `-proxyport` | `2375`                 | Defines the TCP port the proxy listens to.                                                                                                                                                                                                                                    |
-| `-socketpath` | `/var/run/docker.sock` | Specifies the UNIX socket path to connect to. By default, it connects to the Docker daemon socket.                                                                                                                                                                            |
-
-
+| Parameter   | Default Value         | Description   |
+|-------------|-----------------------|---------------|
+| -allowfrom  | 127.0.0.1/32          | Specifies the IP addresses of the clients allowed to connect to the proxy. The default value is 127.0.0.1/32, which means only localhost is allowed. This default configuration may not be useful in most cases, but it is because of a secure-by-default design. To allow all IPv4 addresses, set -allowfrom=0.0.0.0/0. Please remember that socket-proxy should never be exposed to a public network, regardless of this extra security layer.|
+| -logjson    | (not set)             | If set, it enables logging in JSON format. If unset, docker-proxy logs in plain text format.|
+| -loglevel   | INFO                  | Sets the log level. Accepted values are: DEBUG, INFO, WARN, ERROR.|
+| -proxyport  | 2375                  | Defines the TCP port the proxy listens to.|
+| -socketpath | /var/run/docker.sock  | Specifies the UNIX socket path to connect to. By default, it connects to the Docker daemon socket.|
 
 ## License
 
