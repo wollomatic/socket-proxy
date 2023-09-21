@@ -24,11 +24,8 @@ func main() {
 	initConfig()
 	slog.Info("starting socket-proxy", "version", version, "os", runtime.GOOS, "arch", runtime.GOARCH, "runtime", runtime.Version(), "URL", programUrl)
 	slog.Info("configuration is", "socketpath", socketPath, "proxyport", proxyPort, "loglevel", logLevel, "logjson", logJSON, "allowfrom", allowFrom)
-	for _, rx := range mr {
-		// show allowed requests
-		if rx.regexCompiled != nil {
-			slog.Info("configured allowed request", "method", rx.method, "regex", rx.regexCompiled)
-		}
+	for method, regex := range allowedRequests {
+		slog.Info("configured allowed request", "method", method, "regex", regex)
 	}
 
 	// define the reverse proxy

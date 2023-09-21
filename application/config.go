@@ -27,11 +27,12 @@ var (
 	socketPath = "/var/run/docker.sock" // path to the unix socket
 )
 
+var allowedRequests map[string]*regexp.Regexp
+
 // used for list of allowed requests
 type methodRegex struct {
-	method        string
-	regexString   string
-	regexCompiled *regexp.Regexp
+	method      string
+	regexString string
 }
 
 // mr is the allowlist of requests per http method
@@ -94,26 +95,27 @@ func initConfig() {
 		_, _ = fmt.Fprintln(os.Stderr, "Invalid log level. Supported levels are DEBUG, INFO, WARN, ERROR")
 		os.Exit(1)
 	}
-	logOps := &slog.HandlerOptions{
+	logOpts := &slog.HandlerOptions{
 		AddSource: logSourcePosition,
 		Level:     slogLevel,
 	}
 	if logJSON {
-		logger = slog.New(slog.NewJSONHandler(os.Stdout, logOps))
+		logger = slog.New(slog.NewJSONHandler(os.Stdout, logOpts))
 	} else {
-		logger = slog.New(slog.NewTextHandler(os.Stdout, logOps))
+		logger = slog.New(slog.NewTextHandler(os.Stdout, logOpts))
 	}
 	slog.SetDefault(logger)
 
-	// Iterate per request method:
-	// Non-empty regexString means that the request is allowed. In that case, compile the regex
-	for i := 0; i < len(mr); i++ {
-		if mr[i].regexString != "" {
-			mr[i].regexCompiled, err = regexp.Compile("^" + mr[i].regexString + "$")
+	// compile regexes for allowed requests
+	allowedRequests = make(map[string]*regexp.Regexp)
+	for _, rx := range mr {
+		if rx.regexString != "" {
+			r, err := regexp.Compile("^" + rx.regexString + "$")
 			if err != nil {
-				slog.Error("invalid regex", "method", mr[i].method, "regex", mr[i].regexString, "error", err)
+				slog.Error("invalid regex", "method", rx.method, "regex", rx.regexString, "error", err)
 				os.Exit(1)
 			}
+			allowedRequests[rx.method] = r
 		}
 	}
 }

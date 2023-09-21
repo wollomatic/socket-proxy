@@ -5,11 +5,10 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
-	"strings"
 )
 
 // handleHttpRequest checks if the request is allowed and sends it to the proxy.
-// Otherwise, it returns a 405 Method Not Allowed error.
+// Otherwise, it returns a "405 Method Not Allowed" or a "403 Forbidden" error.
 // In case of an error, it returns a 500 Internal Server Error.
 func handleHttpRequest(w http.ResponseWriter, r *http.Request) {
 
@@ -21,28 +20,44 @@ func handleHttpRequest(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !allowedIP {
-		slog.Warn("blocked request", "reason", "forbidden IP", "method", r.Method, "URL", r.URL, "client", r.RemoteAddr)
-		sendHTTPError(w, http.StatusForbidden)
+		communicateBlockedRequest(w, r, "forbidden IP", http.StatusForbidden)
 		return
 	}
 
-	// iterate over the list of http methods and check if the request is allowed
-	for _, allowed := range mr {
-		// stop if the method does not match or the method is not allowed (no compiled regex)
-		if (allowed.method != r.Method) || (allowed.regexCompiled == nil) {
-			continue
-		}
-		// check if the request URL path matches the allowed regex
-		if allowed.regexCompiled.MatchString(r.URL.Path) {
-			slog.Debug("allowed request", "method", r.Method, "URL", r.URL, "client", r.RemoteAddr)
-			socketProxy.ServeHTTP(w, r) // proxy the request
-			return
-		}
+	// check if the request is allowed
+	allowed, exists := allowedRequests[r.Method]
+	if !exists { // method not in map -> not allowed
+		communicateBlockedRequest(w, r, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if !allowed.MatchString(r.URL.Path) { // path does not match regex -> not allowed
+		communicateBlockedRequest(w, r, "path not allowed", http.StatusForbidden)
+		return
 	}
 
-	// at this point no allowed method/path was found, so block the request
-	slog.Warn("blocked request", "reason", "no allowed method/path matched", "method", r.Method, "URL", r.URL, "client", r.RemoteAddr)
-	sendHTTPError(w, http.StatusForbidden)
+	// finally log and proxy the request
+	slog.Debug("allowed request", "method", r.Method, "URL", r.URL, "client", r.RemoteAddr)
+	socketProxy.ServeHTTP(w, r) // proxy the request
+}
+
+// isAllowedIP checks if the given remote address is allowed to connect to the proxy.
+// The IP address is extracted from a RemoteAddr string (the part before the colon).
+func isAllowedIP(remoteAddr string) (bool, error) {
+	// Get the IP address from the remote address string
+	ipStr, _, err := net.SplitHostPort(remoteAddr)
+	if err != nil {
+		return false, err
+	}
+	// Parse the IP address
+	ip := net.ParseIP(ipStr)
+	if ip == nil {
+		return false, errors.New("invalid IP format")
+	}
+	// check if IP address is in allowed network
+	if !allowedNetwork.Contains(ip) {
+		return false, nil
+	}
+	return true, nil
 }
 
 // sendHTTPError sends a HTTP error with the given status code.
@@ -50,25 +65,8 @@ func sendHTTPError(w http.ResponseWriter, status int) {
 	http.Error(w, http.StatusText(status), status)
 }
 
-// isAllowedIP checks if the given remote address is allowed to connect to the proxy.
-// The IP address is extracted from a RemoteAddr string (the part before the colon).
-func isAllowedIP(remoteAddr string) (bool, error) {
-	// extract IP address from remoteAddr
-	var ipStr string
-	index := strings.Index(remoteAddr, ":")
-	if index > -1 {
-		ipStr = remoteAddr[:index]
-	} else {
-		return false, errors.New("colon missing")
-	}
-	// parse IP address
-	ip := net.ParseIP(ipStr)
-	if ip == nil {
-		return false, errors.New("IP parse error")
-	}
-	// check if IP address is in allowed network
-	if allowedNetwork.Contains(ip) {
-		return true, nil // allowed, no error
-	}
-	return false, nil // not allowed, no error
+// communicateBlockedRequest logs a blocked request and sends a HTTP error.
+func communicateBlockedRequest(w http.ResponseWriter, r *http.Request, reason string, status int) {
+	slog.Warn("blocked request", "reason", reason, "method", r.Method, "URL", r.URL, "client", r.RemoteAddr, "response", status)
+	sendHTTPError(w, status)
 }
