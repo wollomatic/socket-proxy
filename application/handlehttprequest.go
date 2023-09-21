@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"log/slog"
 	"net"
 	"net/http"
@@ -11,26 +12,15 @@ import (
 // Otherwise, it returns a 405 Method Not Allowed error.
 // In case of an error, it returns a 500 Internal Server Error.
 func handleHttpRequest(w http.ResponseWriter, r *http.Request) {
-	// extract IP from RemoteAddr and check if it is allowed to connect
-	var (
-		ipStr string
-		ip    net.IP
-	)
-	index := strings.Index(r.RemoteAddr, ":")
-	if index > -1 {
-		ipStr = r.RemoteAddr[:index]
-	} else {
-		slog.Error("invalid RemoteAddr format", "reason", "colon missing", "method", r.Method, "URL", r.URL, "client", r.RemoteAddr)
+
+	// check if the client's IP is allowed to access
+	allowedIP, err := isAllowedIP(r.RemoteAddr)
+	if err != nil {
+		slog.Error("invalid RemoteAddr format", "reason", err, "method", r.Method, "URL", r.URL, "client", r.RemoteAddr)
 		sendHTTPError(w, http.StatusInternalServerError)
 		return
 	}
-	ip = net.ParseIP(ipStr)
-	if ip == nil {
-		slog.Error("invalid RemoteAddr format", "reason", "parse error", "method", r.Method, "URL", r.URL, "client", r.RemoteAddr)
-		sendHTTPError(w, http.StatusInternalServerError)
-		return
-	}
-	if !allowedNetwork.Contains(ip) {
+	if !allowedIP {
 		slog.Warn("blocked request", "reason", "forbidden IP", "method", r.Method, "URL", r.URL, "client", r.RemoteAddr)
 		sendHTTPError(w, http.StatusForbidden)
 		return
@@ -58,4 +48,27 @@ func handleHttpRequest(w http.ResponseWriter, r *http.Request) {
 // sendHTTPError sends a HTTP error with the given status code.
 func sendHTTPError(w http.ResponseWriter, status int) {
 	http.Error(w, http.StatusText(status), status)
+}
+
+// isAllowedIP checks if the given remote address is allowed to connect to the proxy.
+// The IP address is extracted from a RemoteAddr string (the part before the colon).
+func isAllowedIP(remoteAddr string) (bool, error) {
+	// extract IP address from remoteAddr
+	var ipStr string
+	index := strings.Index(remoteAddr, ":")
+	if index > -1 {
+		ipStr = remoteAddr[:index]
+	} else {
+		return false, errors.New("colon missing")
+	}
+	// parse IP address
+	ip := net.ParseIP(ipStr)
+	if ip == nil {
+		return false, errors.New("IP parse error")
+	}
+	// check if IP address is in allowed network
+	if allowedNetwork.Contains(ip) {
+		return true, nil // allowed, no error
+	}
+	return false, nil // not allowed, no error
 }
