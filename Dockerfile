@@ -1,6 +1,6 @@
 FROM --platform=$BUILDPLATFORM golang:1.21-alpine AS build
 WORKDIR /application
-COPY application/go.mod application/*.go ./
+COPY go.mod *.go ./
 ARG TARGETOS
 ARG TARGETARCH
 RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -tags=netgo -gcflags=all=-d=checkptr -ldflags="-w -s" -o /socket-proxy .
