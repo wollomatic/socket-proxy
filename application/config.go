@@ -20,11 +20,13 @@ const (
 )
 
 var (
-	allowFrom  = "127.0.0.1/32"         // allowed IPs to connect to the proxy
-	logJSON    = false                  // if true, log in JSON format
-	logLevel   = "INFO"                 // log level as string
-	proxyPort  = "2375"                 // tcp port to listen on
-	socketPath = "/var/run/docker.sock" // path to the unix socket
+	allowFrom      = "127.0.0.1/32"         // allowed IPs to connect to the proxy
+	logJSON        = false                  // if true, log in JSON format
+	logLevel       = "INFO"                 // log level as string
+	proxyPort      = "2375"                 // tcp port to listen on
+	socketPath     = "/var/run/docker.sock" // path to the unix socket
+	watchdog       = uint(0)                // watchdog interval in seconds (0 to disable)
+	stopOnWatchdog = false                  // set to true to stop the program when the socket gets unavailable (otherwise log only)
 )
 
 var allowedRequests map[string]*regexp.Regexp
@@ -61,6 +63,8 @@ func initConfig() {
 	flag.StringVar(&logLevel, "loglevel", logLevel, "set log level: DEBUG, INFO, WARN, ERROR")
 	flag.StringVar(&proxyPort, "proxyport", proxyPort, "tcp port to listen on")
 	flag.StringVar(&socketPath, "socketpath", socketPath, "unix socket path to connect to")
+	flag.UintVar(&watchdog, "watchdog", watchdog, "watchdog interval in seconds (0 to disable)")
+	flag.BoolVar(&stopOnWatchdog, "stoponwatchdog", stopOnWatchdog, "stop the program when the socket gets unavailable (otherwise log only)")
 	for i := 0; i < len(mr); i++ {
 		flag.StringVar(&mr[i].regexString, "allow"+mr[i].method, mr[i].regexString, "regex for "+mr[i].method+" requests (not set means method is not allowed)")
 	}

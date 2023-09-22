@@ -28,6 +28,12 @@ func main() {
 		slog.Info("configured allowed request", "method", method, "regex", regex)
 	}
 
+	err := checkSocketAvailability(socketPath)
+	if err != nil {
+		slog.Error("socket not available", "error", err)
+		os.Exit(2)
+	}
+
 	// define the reverse proxy
 	socketUrlDummy, _ := url.Parse("http://localhost") // dummy URL - we use the unix socket
 	socketProxy = httputil.NewSingleHostReverseProxy(socketUrlDummy)
@@ -48,6 +54,11 @@ func main() {
 			os.Exit(2)
 		}
 	}()
+
+	// start the watchdog if configured
+	if watchdog > 0 {
+		go startSocketWatchdog(socketPath, watchdog)
+	}
 
 	// Wait for stop signal
 	quit := make(chan os.Signal, 1)
