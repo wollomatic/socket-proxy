@@ -23,7 +23,10 @@ var (
 func main() {
 	initConfig()
 	slog.Info("starting socket-proxy", "version", version, "os", runtime.GOOS, "arch", runtime.GOARCH, "runtime", runtime.Version(), "URL", programUrl)
-	slog.Info("configuration is", "socketpath", socketPath, "proxyport", proxyPort, "loglevel", logLevel, "logjson", logJSON, "allowfrom", allowFrom)
+	slog.Info("configuration info", "socketpath", socketPath, "proxyport", proxyPort, "loglevel", logLevel, "logjson", logJSON, "allowfrom", allowFrom, "shutdowngracetime", shutdownGraceTime)
+	if watchdog > 0 {
+		slog.Info("watchdog enabled", "interval", watchdog, "stoponwatchdog", stopOnWatchdog)
+	}
 	for method, regex := range allowedRequests {
 		slog.Info("configured allowed request", "method", method, "regex", regex)
 	}
@@ -67,7 +70,7 @@ func main() {
 
 	// Try to shut down gracefully
 	slog.Info("received stop signal - shutting down")
-	ctx, cancel := context.WithTimeout(context.Background(), maxGracefulShutdownTime*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(shutdownGraceTime)*time.Second)
 	defer cancel()
 	if err := srv.Shutdown(ctx); err != nil {
 		slog.Warn("timeout stopping server (maybe client still running?) - forcing shutdown", "error", err)
