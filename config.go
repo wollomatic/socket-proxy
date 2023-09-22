@@ -13,20 +13,20 @@ import (
 )
 
 const (
-	version                 = "0.1.0"
-	programUrl              = "github.com/wollomatic/socket-proxy"
-	logSourcePosition       = false // set to true to log the source position (file and line) of the log message
-	maxGracefulShutdownTime = 10    // Maximum time in seconds to wait for the server to shut down gracefully
+	version           = "0.1.0"
+	programUrl        = "github.com/wollomatic/socket-proxy"
+	logSourcePosition = false // set to true to log the source position (file and line) of the log message
 )
 
 var (
-	allowFrom      = "127.0.0.1/32"         // allowed IPs to connect to the proxy
-	logJSON        = false                  // if true, log in JSON format
-	logLevel       = "INFO"                 // log level as string
-	proxyPort      = "2375"                 // tcp port to listen on
-	socketPath     = "/var/run/docker.sock" // path to the unix socket
-	watchdog       = uint(0)                // watchdog interval in seconds (0 to disable)
-	stopOnWatchdog = false                  // set to true to stop the program when the socket gets unavailable (otherwise log only)
+	allowFrom         = "127.0.0.1/32"         // allowed IPs to connect to the proxy
+	logJSON           = false                  // if true, log in JSON format
+	logLevel          = "INFO"                 // log level as string
+	proxyPort         = "2375"                 // tcp port to listen on
+	socketPath        = "/var/run/docker.sock" // path to the unix socket
+	shutdownGraceTime = uint(10)               // Maximum time in seconds to wait for the server to shut down gracefully
+	watchdog          = uint(0)                // watchdog interval in seconds (0 to disable)
+	stopOnWatchdog    = false                  // set to true to stop the program when the socket gets unavailable (otherwise log only)
 )
 
 var allowedRequests map[string]*regexp.Regexp
@@ -63,6 +63,7 @@ func initConfig() {
 	flag.StringVar(&logLevel, "loglevel", logLevel, "set log level: DEBUG, INFO, WARN, ERROR")
 	flag.StringVar(&proxyPort, "proxyport", proxyPort, "tcp port to listen on")
 	flag.StringVar(&socketPath, "socketpath", socketPath, "unix socket path to connect to")
+	flag.UintVar(&shutdownGraceTime, "shutdowngracetime", shutdownGraceTime, "maximum time in seconds to wait for the server to shut down gracefully")
 	flag.UintVar(&watchdog, "watchdog", watchdog, "watchdog interval in seconds (0 to disable)")
 	flag.BoolVar(&stopOnWatchdog, "stoponwatchdog", stopOnWatchdog, "stop the program when the socket gets unavailable (otherwise log only)")
 	for i := 0; i < len(mr); i++ {
