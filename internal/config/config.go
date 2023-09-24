@@ -59,7 +59,7 @@ var mr = []methodRegex{
 
 func InitConfig() (*Config, error) {
 	var (
-		cfg       *Config
+		cfg       Config
 		allowFrom string
 		proxyPort uint
 		logLevel  string
@@ -115,5 +115,5 @@ func InitConfig() (*Config, error) {
 			cfg.AllowedRequests[rx.method] = r
 		}
 	}
-	return cfg, nil
+	return &cfg, nil
 }
