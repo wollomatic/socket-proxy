@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"errors"
+	"github.com/wollomatic/socket-proxy/internal/config"
 	"log/slog"
 	"net"
 	"net/http"
@@ -15,23 +16,45 @@ import (
 	"time"
 )
 
+const (
+	programUrl = "github.com/wollomatic/socket-proxy"
+)
+
 var (
-	allowedNetwork *net.IPNet
-	socketProxy    *httputil.ReverseProxy
+	version     = "0.1.0"
+	socketProxy *httputil.ReverseProxy
+	cfg         *config.Config
 )
 
 func main() {
-	initConfig()
 	slog.Info("starting socket-proxy", "version", version, "os", runtime.GOOS, "arch", runtime.GOARCH, "runtime", runtime.Version(), "URL", programUrl)
-	slog.Info("configuration info", "socketpath", socketPath, "proxyport", proxyPort, "loglevel", logLevel, "logjson", logJSON, "allowfrom", allowFrom, "shutdowngracetime", shutdownGraceTime)
-	if watchdog > 0 {
-		slog.Info("watchdog enabled", "interval", watchdog, "stoponwatchdog", stopOnWatchdog)
+	cfg, err := config.InitConfig()
+	if err != nil {
+		slog.Error("error initializing config", "error", err)
+		os.Exit(1)
 	}
-	for method, regex := range allowedRequests {
+
+	logOpts := &slog.HandlerOptions{
+		AddSource: config.LogSourcePosition,
+		Level:     cfg.LogLevel,
+	}
+	var logger *slog.Logger
+	if cfg.LogJSON {
+		logger = slog.New(slog.NewJSONHandler(os.Stdout, logOpts))
+	} else {
+		logger = slog.New(slog.NewTextHandler(os.Stdout, logOpts))
+	}
+	slog.SetDefault(logger)
+
+	slog.Info("configuration info", "socketpath", cfg.SocketPath, "proxyport", cfg.ProxyPort, "loglevel", cfg.LogLevel, "logjson", cfg.LogJSON, "allowfrom", cfg.AllowedNetwork, "shutdowngracetime", cfg.ShutdownGraceTime)
+	if cfg.WatchdogInterval > 0 {
+		slog.Info("watchdog enabled", "interval", cfg.WatchdogInterval, "stoponwatchdog", cfg.StopOnWatchdog)
+	}
+	for method, regex := range cfg.AllowedRequests {
 		slog.Info("configured allowed request", "method", method, "regex", regex)
 	}
 
-	err := checkSocketAvailability(socketPath)
+	err = checkSocketAvailability(cfg.SocketPath)
 	if err != nil {
 		slog.Error("socket not available", "error", err)
 		os.Exit(2)
@@ -42,13 +65,13 @@ func main() {
 	socketProxy = httputil.NewSingleHostReverseProxy(socketUrlDummy)
 	socketProxy.Transport = &http.Transport{
 		DialContext: func(_ context.Context, _, _ string) (net.Conn, error) {
-			return net.Dial("unix", socketPath)
+			return net.Dial("unix", cfg.SocketPath)
 		},
 	}
 
 	// start the server in a goroutine
 	srv := &http.Server{
-		Addr:    ":" + proxyPort,
+		Addr:    cfg.ProxyPort,
 		Handler: http.HandlerFunc(handleHttpRequest),
 	}
 	go func() {
@@ -59,8 +82,8 @@ func main() {
 	}()
 
 	// start the watchdog if configured
-	if watchdog > 0 {
-		go startSocketWatchdog(socketPath, watchdog)
+	if cfg.WatchdogInterval > 0 {
+		go startSocketWatchdog(cfg.SocketPath, cfg.WatchdogInterval, cfg.StopOnWatchdog)
 	}
 
 	// Wait for stop signal
@@ -70,7 +93,7 @@ func main() {
 
 	// Try to shut down gracefully
 	slog.Info("received stop signal - shutting down")
-	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(shutdownGraceTime)*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(cfg.ShutdownGraceTime)*time.Second)
 	defer cancel()
 	if err := srv.Shutdown(ctx); err != nil {
 		slog.Warn("timeout stopping server (maybe client still running?) - forcing shutdown", "error", err)

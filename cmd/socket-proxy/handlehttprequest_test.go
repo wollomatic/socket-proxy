@@ -19,7 +19,7 @@ func TestIsAllowedIP(t *testing.T) {
 	}
 
 	for _, test := range tests {
-		_, allowedNetwork, _ = net.ParseCIDR(test.allowedCIDR)
+		_, cfg.AllowedNetwork, _ = net.ParseCIDR(test.allowedCIDR)
 		result, err := isAllowedIP(test.input)
 		if result != test.expected || (err != nil) != test.expectError {
 			t.Errorf("For input %q, expected %v, %v, but got %v, %v", test.input, test.expected, test.expectError, result, err != nil)

@@ -25,7 +25,7 @@ func handleHttpRequest(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// check if the request is allowed
-	allowed, exists := allowedRequests[r.Method]
+	allowed, exists := cfg.AllowedRequests[r.Method]
 	if !exists { // method not in map -> not allowed
 		communicateBlockedRequest(w, r, "method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -54,7 +54,7 @@ func isAllowedIP(remoteAddr string) (bool, error) {
 		return false, errors.New("invalid IP format")
 	}
 	// check if IP address is in allowed network
-	if !allowedNetwork.Contains(ip) {
+	if !cfg.AllowedNetwork.Contains(ip) {
 		return false, nil
 	}
 	return true, nil

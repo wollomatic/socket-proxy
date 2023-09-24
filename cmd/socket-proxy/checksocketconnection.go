@@ -24,8 +24,8 @@ func checkSocketAvailability(socketPath string) error {
 }
 
 // startSocketWatchdog starts a watchdog that checks the socket availability every n seconds.
-func startSocketWatchdog(socketPath string, seconds uint) {
-	ticker := time.NewTicker(time.Duration(seconds) * time.Second)
+func startSocketWatchdog(socketPath string, interval uint, stopOnWatchdog bool) {
+	ticker := time.NewTicker(time.Duration(interval) * time.Second)
 	defer ticker.Stop()
 
 	for range ticker.C {
