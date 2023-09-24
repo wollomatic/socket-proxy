@@ -25,7 +25,6 @@ const (
 )
 
 type Config struct {
-	AllowedNetwork    *net.IPNet
 	LogJSON           bool
 	StopOnWatchdog    bool
 	ShutdownGraceTime uint
@@ -33,8 +32,12 @@ type Config struct {
 	LogLevel          slog.Level
 	ProxyPort         string
 	SocketPath        string
-	AllowedRequests   map[string]*regexp.Regexp
 }
+
+var (
+	AllowedNetwork  *net.IPNet
+	AllowedRequests map[string]*regexp.Regexp
+)
 
 // used for list of allowed requests
 type methodRegex struct {
@@ -79,7 +82,7 @@ func InitConfig() (*Config, error) {
 
 	// parse allowFrom to check if it is a valid CIDR
 	var err error
-	_, cfg.AllowedNetwork, err = net.ParseCIDR(allowFrom)
+	_, AllowedNetwork, err = net.ParseCIDR(allowFrom)
 	if err != nil {
 		return nil, fmt.Errorf("invalid CIDR \"%s\" for allowfrom: %s", allowFrom, err)
 	}
@@ -105,14 +108,14 @@ func InitConfig() (*Config, error) {
 	}
 
 	// compile regexes for allowed requests
-	cfg.AllowedRequests = make(map[string]*regexp.Regexp)
+	AllowedRequests = make(map[string]*regexp.Regexp)
 	for _, rx := range mr {
 		if rx.regexString != "" {
 			r, err := regexp.Compile("^" + rx.regexString + "$")
 			if err != nil {
 				return nil, fmt.Errorf("invalid regex \"%s\" for method %s: %s", rx.regexString, rx.method, err)
 			}
-			cfg.AllowedRequests[rx.method] = r
+			AllowedRequests[rx.method] = r
 		}
 	}
 	return &cfg, nil

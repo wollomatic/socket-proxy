@@ -28,7 +28,8 @@ var (
 
 func main() {
 	slog.Info("starting socket-proxy", "version", version, "os", runtime.GOOS, "arch", runtime.GOARCH, "runtime", runtime.Version(), "URL", programUrl)
-	cfg, err := config.InitConfig()
+	var err error
+	cfg, err = config.InitConfig()
 	if err != nil {
 		slog.Error("error initializing config", "error", err)
 		os.Exit(1)
@@ -46,11 +47,11 @@ func main() {
 	}
 	slog.SetDefault(logger)
 
-	slog.Info("configuration info", "socketpath", cfg.SocketPath, "proxyport", cfg.ProxyPort, "loglevel", cfg.LogLevel, "logjson", cfg.LogJSON, "allowfrom", cfg.AllowedNetwork, "shutdowngracetime", cfg.ShutdownGraceTime)
+	slog.Info("configuration info", "socketpath", cfg.SocketPath, "proxyport", cfg.ProxyPort, "loglevel", cfg.LogLevel, "logjson", cfg.LogJSON, "allowfrom", config.AllowedNetwork, "shutdowngracetime", cfg.ShutdownGraceTime)
 	if cfg.WatchdogInterval > 0 {
 		slog.Info("watchdog enabled", "interval", cfg.WatchdogInterval, "stoponwatchdog", cfg.StopOnWatchdog)
 	}
-	for method, regex := range cfg.AllowedRequests {
+	for method, regex := range config.AllowedRequests {
 		slog.Info("configured allowed request", "method", method, "regex", regex)
 	}
 
