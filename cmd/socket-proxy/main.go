@@ -49,7 +49,7 @@ func main() {
 	slog.SetDefault(logger)
 
 	// print configuration
-	slog.Info("configuration info", "socketpath", cfg.SocketPath, "proxyport", cfg.ProxyPort, "loglevel", cfg.LogLevel, "logjson", cfg.LogJSON, "allowfrom", config.AllowedNetwork, "shutdowngracetime", cfg.ShutdownGraceTime)
+	slog.Info("configuration info", "socketpath", cfg.SocketPath, "listenaddress", cfg.ListenAddress, "loglevel", cfg.LogLevel, "logjson", cfg.LogJSON, "allowfrom", config.AllowedNetwork, "shutdowngracetime", cfg.ShutdownGraceTime)
 	if cfg.WatchdogInterval > 0 {
 		slog.Info("watchdog enabled", "interval", cfg.WatchdogInterval, "stoponwatchdog", cfg.StopOnWatchdog)
 	} else {
@@ -77,7 +77,7 @@ func main() {
 
 	// start the server in a goroutine
 	srv := &http.Server{
-		Addr:    cfg.ProxyPort,
+		Addr:    cfg.ListenAddress,
 		Handler: http.HandlerFunc(handleHttpRequest),
 	}
 	go func() {

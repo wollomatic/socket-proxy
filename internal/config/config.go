@@ -17,6 +17,7 @@ const (
 	defaultAllowFrom         = "127.0.0.1/32"         // allowed IPs to connect to the proxy
 	defaultLogJSON           = false                  // if true, log in JSON format
 	defaultLogLevel          = "INFO"                 // log level as string
+	defaultListenIP          = "127.0.0.1"            // ip address to bind the server to
 	defaultProxyPort         = 2375                   // tcp port to listen on
 	defaultSocketPath        = "/var/run/docker.sock" // path to the unix socket
 	defaultShutdownGraceTime = uint(10)               // Maximum time in seconds to wait for the server to shut down gracefully
@@ -30,7 +31,7 @@ type Config struct {
 	ShutdownGraceTime uint
 	WatchdogInterval  uint
 	LogLevel          slog.Level
-	ProxyPort         string
+	ListenAddress     string
 	SocketPath        string
 }
 
@@ -64,12 +65,14 @@ func InitConfig() (*Config, error) {
 	var (
 		cfg       Config
 		allowFrom string
+		listenIP  string
 		proxyPort uint
 		logLevel  string
 	)
 	flag.StringVar(&allowFrom, "allowfrom", defaultAllowFrom, "allowed IPs to connect to the proxy")
 	flag.BoolVar(&cfg.LogJSON, "logjson", defaultLogJSON, "log in JSON format (otherwise log in plain text")
 	flag.StringVar(&logLevel, "loglevel", defaultLogLevel, "set log level: DEBUG, INFO, WARN, ERROR")
+	flag.StringVar(&listenIP, "listenip", defaultListenIP, "ip address to listen on")
 	flag.UintVar(&proxyPort, "proxyport", defaultProxyPort, "tcp port to listen on")
 	flag.StringVar(&cfg.SocketPath, "socketpath", defaultSocketPath, "unix socket path to connect to")
 	flag.UintVar(&cfg.ShutdownGraceTime, "shutdowngracetime", defaultShutdownGraceTime, "maximum time in seconds to wait for the server to shut down gracefully")
@@ -87,11 +90,14 @@ func InitConfig() (*Config, error) {
 		return nil, fmt.Errorf("invalid CIDR \"%s\" for allowfrom: %s", allowFrom, err)
 	}
 
-	// parse proxyPort to check if it is a valid port number
+	// pcheck listenIP and proxyPort
+	if net.ParseIP(listenIP) == nil {
+		return nil, fmt.Errorf("invalid IP \"%s\" for listenip", listenIP)
+	}
 	if proxyPort < 1 || proxyPort > 65535 {
 		return nil, errors.New("port number has to be between 1 and 65535")
 	}
-	cfg.ProxyPort = fmt.Sprintf(":%d", proxyPort)
+	cfg.ListenAddress = fmt.Sprintf("%s:%d", listenIP, proxyPort)
 
 	// parse defaultLogLevel and setup logging handler depending on defaultLogJSON
 	switch strings.ToUpper(logLevel) {
