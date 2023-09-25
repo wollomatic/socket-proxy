@@ -58,14 +58,21 @@ services:
     restart: unless-stopped
     user: "65534:<<your docker group id>>"
     read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges
     command:
       - -loglevel=DEBUG
       - -allowfrom=0.0.0.0/0 # allow all IPv4 addresses (know what you are doing!)
       - '-allowGET=/v1\..{1,2}/(version|containers/.*|events.*)'
+      - watchdoginterval=3600 # check once per hour for socket availability
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
     networks:
       - docker-proxynet    # NEVER EVER expose this to the public internet!
+                           # this is a private network only for traefik and socket-proxy
+                           # it is not the same as the traefik-servicenet
 
   traefik:
     # [...] see github.com/wollomatic/traefik2-hardened for a full example
@@ -85,13 +92,16 @@ networks:
 
 ### Parameters
 
-| Parameter   | Default Value        | Description                                                                                                                                                                                                                                                                                                                                                                                                                                    |
-|-------------|----------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `-allowfrom`  | `127.0.0.1/32`         | Specifies the IP addresses of the clients allowed to connect to the proxy. The default value is `127.0.0.1/32`, which means only localhost is allowed. This default configuration may not be useful in most cases, but it is because of a secure-by-default design. To allow all IPv4 addresses, set `-allowfrom=0.0.0.0/0`. Please remember that socket-proxy should never be exposed to a public network, regardless of this extra security layer. |
-| `-logjson`    | (not set)            | If set, it enables logging in JSON format. If unset, docker-proxy logs in plain text format.                                                                                                                                                                                                                                                                                                                                                   |
-| `-loglevel`   | `INFO`                 | Sets the log level. Accepted values are: `DEBUG`, `INFO`, `WARN`, `ERROR`.                                                                                                                                                                                                                                                                                                                                                                      |
-| `-proxyport`  | `2375`                 | Defines the TCP port the proxy listens to.                                                                                                                                                                                                                                                                                                                                                                                                     |
-| `-socketpath` | `/var/run/docker.sock` | Specifies the UNIX socket path to connect to. By default, it connects to the Docker daemon socket.                                                                                                                                                                                                                                                                                                                                             |
+| Parameter           | Default Value          | Description                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+|---------------------|------------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `-allowfrom`        | `127.0.0.1/32`         | Specifies the IP addresses of the clients allowed to connect to the proxy. The default value is `127.0.0.1/32`, which means only localhost is allowed. This default configuration may not be useful in most cases, but it is because of a secure-by-default design. To allow all IPv4 addresses, set `-allowfrom=0.0.0.0/0`. Please remember that socket-proxy should never be exposed to a public network, regardless of this extra security layer. |
+| `-listenip`         | `127.0.0.1`            | Specifies the IP address the server will bind on. Default is only the internal network.                                                                                                                                                                                                                                                                                                                                                              |
+| `-logjson`          | (not set)              | If set, it enables logging in JSON format. If unset, docker-proxy logs in plain text format.                                                                                                                                                                                                                                                                                                                                                         |
+| `-loglevel`         | `INFO`                 | Sets the log level. Accepted values are: `DEBUG`, `INFO`, `WARN`, `ERROR`.                                                                                                                                                                                                                                                                                                                                                                           |
+| `-proxyport`        | `2375`                 | Defines the TCP port the proxy listens to.                                                                                                                                                                                                                                                                                                                                                                                                           |
+| `-socketpath`       | `/var/run/docker.sock` | Specifies the UNIX socket path to connect to. By default, it connects to the Docker daemon socket.                                                                                                                                                                                                                                                                                                                                                   |
+| `-stoponwatchdog`   | (not set)              | If set, socket-proxy will be stopped if the watchdog detects that the unix socket is not available.                                                                                                                                                                                                                                                                                                                                                  |
+| `-watchdoginterval` | `0`                    | Check for socket availabibity every x seconds (disable checks, if not set or value is 0)                                                                                                                                                                                                                                                                                                                                                             |
 
 ## License
 
@@ -99,5 +109,5 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## Aknowledgements
 
-+ [Chris Wiegman's blog post about securing the docker socket](https://www.chriswiegman.com/2019/09/securing-the-docker-socket/) - @ChrisWiegman
-+ [tecnativa/docker-socket-proxy](https://github.com/Tecnativa/docker-socket-proxy) - @Tecnativa
++ [Chris Wiegman's blog post about securing the docker socket](https://www.chriswiegman.com/2019/09/securing-the-docker-socket/)
++ [tecnativa/docker-socket-proxy](https://github.com/Tecnativa/docker-socket-proxy)
