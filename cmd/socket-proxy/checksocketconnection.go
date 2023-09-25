@@ -11,7 +11,7 @@ const dialTimeout = 5 // timeout in seconds for the socket connection
 
 // checkSocketAvailability tries to connect to the socket and returns an error if it fails.
 func checkSocketAvailability(socketPath string) error {
-	slog.Debug("checking socket availability...")
+	slog.Debug("checking socket availability")
 	conn, err := net.DialTimeout("unix", socketPath, dialTimeout*time.Second)
 	if err != nil {
 		return err

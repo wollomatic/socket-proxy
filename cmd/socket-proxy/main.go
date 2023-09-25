@@ -35,6 +35,7 @@ func main() {
 		os.Exit(1)
 	}
 
+	// setup logging
 	logOpts := &slog.HandlerOptions{
 		AddSource: config.LogSourcePosition,
 		Level:     cfg.LogLevel,
@@ -47,14 +48,18 @@ func main() {
 	}
 	slog.SetDefault(logger)
 
+	// print configuration
 	slog.Info("configuration info", "socketpath", cfg.SocketPath, "proxyport", cfg.ProxyPort, "loglevel", cfg.LogLevel, "logjson", cfg.LogJSON, "allowfrom", config.AllowedNetwork, "shutdowngracetime", cfg.ShutdownGraceTime)
 	if cfg.WatchdogInterval > 0 {
 		slog.Info("watchdog enabled", "interval", cfg.WatchdogInterval, "stoponwatchdog", cfg.StopOnWatchdog)
+	} else {
+		slog.Info("watchdog disabled")
 	}
 	for method, regex := range config.AllowedRequests {
 		slog.Info("configured allowed request", "method", method, "regex", regex)
 	}
 
+	// check if the socket is available
 	err = checkSocketAvailability(cfg.SocketPath)
 	if err != nil {
 		slog.Error("socket not available", "error", err)
@@ -98,7 +103,7 @@ func main() {
 	defer cancel()
 	if err := srv.Shutdown(ctx); err != nil {
 		slog.Warn("timeout stopping server (maybe client still running?) - forcing shutdown", "error", err)
-		os.Exit(3)
+		os.Exit(0) // timeout is no error, so we exit with 0
 	}
 	slog.Info("graceful shutdown complete - exiting")
 }

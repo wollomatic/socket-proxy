@@ -73,7 +73,7 @@ func InitConfig() (*Config, error) {
 	flag.UintVar(&proxyPort, "proxyport", defaultProxyPort, "tcp port to listen on")
 	flag.StringVar(&cfg.SocketPath, "socketpath", defaultSocketPath, "unix socket path to connect to")
 	flag.UintVar(&cfg.ShutdownGraceTime, "shutdowngracetime", defaultShutdownGraceTime, "maximum time in seconds to wait for the server to shut down gracefully")
-	flag.UintVar(&cfg.WatchdogInterval, "watchdog", defaultWatchdogInterval, "watchdog interval in seconds (0 to disable)")
+	flag.UintVar(&cfg.WatchdogInterval, "watchdoginterval", defaultWatchdogInterval, "watchdog interval in seconds (0 to disable)")
 	flag.BoolVar(&cfg.StopOnWatchdog, "stoponwatchdog", defaultStopOnWatchdog, "stop the program when the socket gets unavailable (otherwise log only)")
 	for i := 0; i < len(mr); i++ {
 		flag.StringVar(&mr[i].regexString, "allow"+mr[i].method, mr[i].regexString, "regex for "+mr[i].method+" requests (not set means method is not allowed)")
