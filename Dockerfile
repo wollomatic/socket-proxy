@@ -12,5 +12,4 @@ LABEL org.opencontainers.image.source=https://github.com/wollomatic/socket-proxy
 VOLUME /var/run/docker.sock
 EXPOSE 2375
 ENTRYPOINT ["/socket-proxy"]
-COPY --from=build ./healthcheck /healthcheck
-COPY --from=build ./socket-proxy /socket-proxy
+COPY --from=build ./healthcheck ./socket-proxy /
