@@ -15,6 +15,7 @@ const LogSourcePosition = false // set to true to log the source position (file 
 
 const (
 	defaultAllowFrom         = "127.0.0.1/32"         // allowed IPs to connect to the proxy
+	defaultAllowHealthcheck  = false                  // allow health check requests (HEAD http://localhost:55555/health)
 	defaultLogJSON           = false                  // if true, log in JSON format
 	defaultLogLevel          = "INFO"                 // log level as string
 	defaultListenIP          = "127.0.0.1"            // ip address to bind the server to
@@ -26,6 +27,7 @@ const (
 )
 
 type Config struct {
+	AllowHealthcheck  bool
 	LogJSON           bool
 	StopOnWatchdog    bool
 	ShutdownGraceTime uint
@@ -70,6 +72,7 @@ func InitConfig() (*Config, error) {
 		logLevel  string
 	)
 	flag.StringVar(&allowFrom, "allowfrom", defaultAllowFrom, "allowed IPs to connect to the proxy")
+	flag.BoolVar(&cfg.AllowHealthcheck, "allowhealthcheck", defaultAllowHealthcheck, "allow health check requests (HEAD http://localhost:55555/health)")
 	flag.BoolVar(&cfg.LogJSON, "logjson", defaultLogJSON, "log in JSON format (otherwise log in plain text")
 	flag.StringVar(&logLevel, "loglevel", defaultLogLevel, "set log level: DEBUG, INFO, WARN, ERROR")
 	flag.StringVar(&listenIP, "listenip", defaultListenIP, "ip address to listen on")

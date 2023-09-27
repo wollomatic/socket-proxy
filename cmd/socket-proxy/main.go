@@ -92,6 +92,11 @@ func main() {
 		go startSocketWatchdog(cfg.SocketPath, cfg.WatchdogInterval, cfg.StopOnWatchdog)
 	}
 
+	// start the health check server if configured
+	if cfg.AllowHealthcheck {
+		go healthCheckServer(cfg.SocketPath)
+	}
+
 	// Wait for stop signal
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)

@@ -3,6 +3,7 @@ package main
 import (
 	"log/slog"
 	"net"
+	"net/http"
 	"os"
 	"time"
 )
@@ -35,5 +36,26 @@ func startSocketWatchdog(socketPath string, interval uint, stopOnWatchdog bool) 
 				os.Exit(10)
 			}
 		}
+	}
+}
+
+func healthCheckServer(socketPath string) {
+	slog.Info("starting health check server")
+	http.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodHead {
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
+		err := checkSocketAvailability(socketPath)
+		if err != nil {
+			slog.Warn("health check failed", "error", err)
+			w.WriteHeader(http.StatusServiceUnavailable)
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+	})
+	err := http.ListenAndServe("127.0.0.1:55555", nil)
+	if err != nil {
+		slog.Error("error starting health check server", "error", err)
 	}
 }
