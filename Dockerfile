@@ -3,7 +3,8 @@ WORKDIR /application
 COPY . ./
 ARG TARGETOS
 ARG TARGETARCH
-RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -tags=netgo -gcflags=all=-d=checkptr -ldflags="-w -s" -o / ./...
+ARG VERSION
+RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -tags=netgo -gcflags=all=-d=checkptr -ldflags="-w -s -X 'main.VERSION=${VERSION}'" -o / ./...
 
 FROM scratch
 LABEL org.opencontainers.image.source=https://github.com/wollomatic/socket-proxy \
