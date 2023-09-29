@@ -27,7 +27,6 @@ var (
 )
 
 func main() {
-	slog.Info("starting socket-proxy", "version", version, "os", runtime.GOOS, "arch", runtime.GOARCH, "runtime", runtime.Version(), "URL", programUrl)
 	var err error
 	cfg, err = config.InitConfig()
 	if err != nil {
@@ -49,6 +48,7 @@ func main() {
 	slog.SetDefault(logger)
 
 	// print configuration
+	slog.Info("starting socket-proxy", "version", version, "os", runtime.GOOS, "arch", runtime.GOARCH, "runtime", runtime.Version(), "URL", programUrl)
 	slog.Info("configuration info", "socketpath", cfg.SocketPath, "listenaddress", cfg.ListenAddress, "loglevel", cfg.LogLevel, "logjson", cfg.LogJSON, "allowfrom", config.AllowedNetwork, "shutdowngracetime", cfg.ShutdownGraceTime)
 	if cfg.WatchdogInterval > 0 {
 		slog.Info("watchdog enabled", "interval", cfg.WatchdogInterval, "stoponwatchdog", cfg.StopOnWatchdog)
