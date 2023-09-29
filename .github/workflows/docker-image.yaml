@@ -35,7 +35,6 @@ jobs:
           context: .
           platforms: linux/amd64
           push: true
-          build-args: VERSION=${{ github.event.release.tag_name }}-${{ github.run_number }}
+          build-args: VERSION=${{ GITHUB_SHA }}
           tags: |
-            docker.io/${{ secrets.DOCKERHUB_USERNAME }}/socket-proxy:${{ github.event.release.tag_name }}
-            docker.io/${{ secrets.DOCKERHUB_USERNAME }}/socket-proxy:${{ github.event.release.tag_name }}-${{ github.run_number }}
+            docker.io/${{ secrets.DOCKERHUB_USERNAME }}/socket-proxy:${{ GITHUB_SHA }}
