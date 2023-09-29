@@ -1,14 +1,8 @@
 name: Build and Publish
 
 on:
-#  workflow_dispatch:
-  # run it on push to the default repository branch
    push:
-     branches: [main]
-  # # run it during pull request
-  # pull_request:
-  # schedule:
-  #   - cron:  '14 3 * * 0'
+     tags: ['*']
 
 jobs:
 
@@ -19,6 +13,10 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Extract tag name
+        id: get_tag
+        run: echo "::set-output name=VERSION::${GITHUB_REF#refs/tags/}"
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -35,6 +33,7 @@ jobs:
           context: .
           platforms: linux/amd64
           push: true
-          build-args: VERSION=${{ github.sha }}
+          build-args: VERSION=${{ steps.get_tag.outputs.VERSION }}
           tags: |
-            docker.io/${{ secrets.DOCKERHUB_USERNAME }}/socket-proxy:${{ github.sha }}
+            docker.io/${{ secrets.DOCKERHUB_USERNAME }}/socket-proxy:${{ steps.get_tag.outputs.VERSION }}
+            docker.io/${{ secrets.DOCKERHUB_USERNAME }}/socket-proxy:latest
