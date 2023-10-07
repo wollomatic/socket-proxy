@@ -53,8 +53,6 @@ To determine which HTTP requests your client application uses, you could switch 
 
 ### Example for proxying the docker socket to Traefik
 
-As of the early stage of this project, there is only an image with the "testing" tag available: ``wollomatic/socket-proxy:testing``
-
 You need to know how to install Traefik in this environment. See [wollomatic/traefik2-hardened](https://github.com/wollomatic/traefik2-hardened) for an example (that repo still uses tecnativa's socket proxy).
 
 The image can be deployed with docker compose:
