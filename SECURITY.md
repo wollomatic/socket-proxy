@@ -1,11 +1,20 @@
------BEGIN PGP SIGNED MESSAGE-----
-Hash: SHA256
-
 # Security Policy
 
 ## Supported Versions
 
-As there are no breaking changes to existing features planned, always the most recent version is supported.
+As no breaking changes to existing features are planned, only the most recent version is supported.
+
+## Signed Docker Images
+
+The docker images are signed with cosign. The public key is available in the repository, on [https://wollomatic.de/socket-proxy/cosign.pub](https://wollomatic.de/socket-proxy/cosign.pub) and here:
+```
+-----BEGIN PUBLIC KEY-----
+MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEYdXlfRbkO6KqPU7Khn1mSjbOIaD3
+um421A0NeT1wi840iWNp6MVKyj3tpnAyaQcLgd5/22O+eEHY+5+EHwB+eA==
+-----END PUBLIC KEY-----
+```
+
+The signature is stored at Docker hub as well. For more information about cosign, see [https://github.com/sigstore/cosign#readme](https://github.com/sigstore/cosign#readme).
 
 ## Reporting a Vulnerability
 
@@ -73,19 +82,3 @@ Q/PCqEw9
 =6UYI
 - -----END PGP PUBLIC KEY BLOCK-----
 ```
------BEGIN PGP SIGNATURE-----
-
-iQIzBAEBCAAdFiEE1XQkrHwmL0tE9FtXVYa3pNFebKcFAmUfHHIACgkQVYa3pNFe
-bKfCyg/9G9gEcXfWeolzvjAkxH83j1AfsA7VFSAgqBpgrnvzTEQDSGGp3l6WvRjb
-dEc5WsuGZYzE4I8SK4n9qgAhTUuQk1vA1uKB8+ef4NCUeuTh/y7m5YUp3PGJYyNN
-Mts7860JEzsLtS76IvzMRNnPETi+fTOFX02SrJBeIx823Gj8qk/ous8sirKi9y7F
-0YOglHbrGbMQxlYXC0ChnRpRfiGbxmPdHtm/6tF44uVMqbk9Ma9rTRoUTYIIKZBu
-VEK2S5nQjZrfHRlXIu682dkmmxV3wMzIxcoM+zFkCDdZJ0W5j882WJYc64q0+vUM
-6eqcTfm3cSOMwR0oNrxGNMx21cS1iJd8uJ0zh1gfzu1hSHr0LTjDIYgNQJJxk3Xo
-/upTzUXIE5if4rB+ac6m6XizZkfjD4i42xj6o+3RPcLlLGOhFsYomfaNwwmXk76D
-dAM+ujkz7i3EAzfZDqPSHq5Z2KrgCF6IgFbV1Skf+5m2ojM2CCS8FAl9vY1iFCy8
-vbcU34zVAdGlzUilpXbTNnGouRIwnTUC88mIoecQn8lag93WAlhn3acjubkx45bH
-fay3KToOF8GybDUOQOqgJJ94uvEbL18f67l2GrmSwGF8bIDSoknbzMeqLLwfmBDV
-/K+/6hUNBkQxzmyAc8T3TvE0SGfPj/wqQ+/QX1fjWg4amAcD8pQ=
-=OqGF
------END PGP SIGNATURE-----
