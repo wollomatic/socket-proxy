@@ -32,6 +32,7 @@ jobs:
 
       - name: Build and push Docker image
         uses: docker/build-push-action@v5
+        id: build-and-push
         with:
           context: .
           platforms: linux/amd64,linux/arm/v7,linux/arm64
@@ -39,8 +40,15 @@ jobs:
           build-args: VERSION=${{ steps.get_tag.outputs.VERSION }}
           tags: docker.io/${{ secrets.DOCKERHUB_USERNAME }}/socket-proxy:${{ steps.get_tag.outputs.VERSION }}
 
-      - name: Sign image with a key
-        run: cosign sign --yes --key env://COSIGN_PRIVATE_KEY docker.io/${{ secrets.DOCKERHUB_USERNAME }}/socket-proxy:${{ steps.build-and-push.outputs.digest }}
+      - name: Get digests
+        id: get-digests
+        run: echo "::set-output name=digests::${{ steps.build-and-push.outputs.digests }}"
+
+      - name: Sign images for all platforms
+        run: |
+          for digest in ${{ fromJson(steps.get-digests.outputs.digests) }}; do
+            cosign sign --yes --key env://COSIGN_PRIVATE_KEY docker.io/${{ secrets.DOCKERHUB_USERNAME }}/socket-proxy@$digest
+          done
         env:
           COSIGN_PRIVATE_KEY: ${{ secrets.COSIGN_PRIVATE_KEY }}
           COSIGN_PASSWORD: ${{ secrets.COSIGN_PASSWORD }}
