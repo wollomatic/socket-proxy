@@ -43,9 +43,7 @@ jobs:
           tags: docker.io/${{ secrets.DOCKERHUB_USERNAME }}/socket-proxy:${{ steps.get_tag.outputs.VERSION }}
 
       - name: Sign images for all platforms
-        run: |
-          echo @${{ steps.build-and-push.outputs.digest }}
-          cosign sign --yes --key env://COSIGN_PRIVATE_KEY docker.io/${{ secrets.DOCKERHUB_USERNAME }}/socket-proxy@${{ steps.build-and-push.outputs.digest }}
+        run: cosign sign --recursive --yes --key env://COSIGN_PRIVATE_KEY docker.io/${{ secrets.DOCKERHUB_USERNAME }}/socket-proxy:${{ steps.get_tag.outputs.VERSION }}
         env:
           COSIGN_PRIVATE_KEY: ${{ secrets.COSIGN_PRIVATE_KEY }}
           COSIGN_PASSWORD: ${{ secrets.COSIGN_PASSWORD }}
