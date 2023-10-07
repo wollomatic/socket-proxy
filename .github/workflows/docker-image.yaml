@@ -18,6 +18,9 @@ jobs:
         id: get_tag
         run: echo "::set-output name=VERSION::${GITHUB_REF#refs/tags/}"
 
+      - name: Install Cosign
+        uses: sigstore/cosign-installer@v3.1.1
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
@@ -31,9 +34,13 @@ jobs:
         uses: docker/build-push-action@v5
         with:
           context: .
-          platforms: linux/amd64
+          platforms: linux/amd64,linux/arm/v7,linux/arm64
           push: true
           build-args: VERSION=${{ steps.get_tag.outputs.VERSION }}
-          tags: |
-            docker.io/${{ secrets.DOCKERHUB_USERNAME }}/socket-proxy:${{ steps.get_tag.outputs.VERSION }}
-            docker.io/${{ secrets.DOCKERHUB_USERNAME }}/socket-proxy:latest
+          tags: docker.io/${{ secrets.DOCKERHUB_USERNAME }}/socket-proxy:${{ steps.get_tag.outputs.VERSION }}
+
+      - name: Sign image with a key
+        run: cosign sign --yes --key env://COSIGN_PRIVATE_KEY docker.io/${{ secrets.DOCKERHUB_USERNAME }}/socket-proxy:${{ steps.build-and-push.outputs.digest }}
+        env:
+          COSIGN_PRIVATE_KEY: ${{ secrets.COSIGN_PRIVATE_KEY }}
+          COSIGN_PASSWORD: ${{ secrets.COSIGN_PASSWORD }}
