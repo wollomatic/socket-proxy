@@ -51,6 +51,21 @@ A good online regexp tester is [regex101.com](https://regex101.com/).
 
 To determine which HTTP requests your client application uses, you could switch socket-proxy to debug log level and look at the log output while allowing all requests in a secure environment.
 
+### Container health check
+
+Health checks are disables by default. As the socket-proxy container may not be exposed to a public network, there is a separate health check binary included in the container image. To activate the health check, the `-allowhealthcheck` parameter must be set. Then, a health check is possible for example with the following docker-compose snippet:
+
+``` compose.yaml
+# [...]
+    healthcheck:
+      test: ["CMD", "./healthcheck"]
+      interval: 10s
+      timeout: 5s
+      retries: 2
+# [...]
+```
+
+
 ### Example for proxying the docker socket to Traefik
 
 You need to know how to install Traefik in this environment. See [wollomatic/traefik2-hardened](https://github.com/wollomatic/traefik2-hardened) for an example (that repo still uses tecnativa's socket proxy).
