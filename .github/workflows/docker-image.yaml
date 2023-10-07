@@ -42,15 +42,10 @@ jobs:
           build-args: VERSION=${{ steps.get_tag.outputs.VERSION }}
           tags: docker.io/${{ secrets.DOCKERHUB_USERNAME }}/socket-proxy:${{ steps.get_tag.outputs.VERSION }}
 
-      - name: Get digests
-        id: get-digests
-        run: echo "::set-output name=digests::${{ steps.build-and-push.outputs.digests }}"
-
       - name: Sign images for all platforms
         run: |
-          for digest in ${{ fromJson(steps.get-digests.outputs.digests) }}; do
-            cosign sign --yes --key env://COSIGN_PRIVATE_KEY docker.io/${{ secrets.DOCKERHUB_USERNAME }}/socket-proxy@$digest
-          done
+          echo @${{ steps.build-and-push.outputs.digest }}
+          cosign sign --yes --key env://COSIGN_PRIVATE_KEY docker.io/${{ secrets.DOCKERHUB_USERNAME }}/socket-proxy@${{ steps.build-and-push.outputs.digest }}
         env:
           COSIGN_PRIVATE_KEY: ${{ secrets.COSIGN_PRIVATE_KEY }}
           COSIGN_PASSWORD: ${{ secrets.COSIGN_PASSWORD }}
