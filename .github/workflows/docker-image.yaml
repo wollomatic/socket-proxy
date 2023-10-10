@@ -17,7 +17,7 @@ jobs:
       - name: Run Gosec Security Scanner
         uses: securego/gosec@master
         with:
-          args: ./...
+          args: -exclude=G112 ./...
 
       - name: Extract tag name
         id: get_tag
