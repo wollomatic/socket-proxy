@@ -57,7 +57,16 @@ func healthCheckServer(socketPath string) {
 		}
 		w.WriteHeader(http.StatusOK)
 	})
-	if err := http.ListenAndServe("127.0.0.1:55555", hcMux); err != nil && !errors.Is(err, http.ErrServerClosed) {
+
+	hcSrv := &http.Server{
+		Addr:              "127.0.0.1:55555",
+		Handler:           hcMux,
+		ReadHeaderTimeout: 5 * time.Second,
+		ReadTimeout:       5 * time.Second,
+		WriteTimeout:      5 * time.Second,
+	}
+
+	if err := hcSrv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		slog.Error("healthcheck http server problem", "error", err)
 	}
 }
