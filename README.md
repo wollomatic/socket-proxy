@@ -9,6 +9,8 @@ It is designed with security in mind, so there are secure defaults, and there is
 
 Configuration of the allowlist is done for each http method separately using the Go regexp syntax. This allows fine-grained control over the allowed http methods.
 
+The source code is available on [GitHub: wollomatic/socket-proxy](https://github.com/wollomatic/socket-proxy).
+
 ## Getting Started
 
 ### Warning
@@ -18,6 +20,8 @@ You should know what you are doing. Accidentally exposing a Unix socket to the p
 ### Installing
 
 The container image is available on [Docker Hub: wollomatic/socket-proxy](https://hub.docker.com/r/wollomatic/socket-proxy).
+
+Every socket-proxy image is signed with Cosign. The public key is available on [GitHub: wollomatic/socket-proxy/main/cosign.pub](https://raw.githubusercontent.com/wollomatic/socket-proxy/main/cosign.pub) and [https://wollomatic.de/socket-proxy/cosign.pub](https://wollomatic.de/socket-proxy/cosign.pub). Please refer to the [Security Policy](https://github.com/wollomatic/socket-proxy/blob/main/SECURITY.md) for more information.
 
 ### Allowing access
 
