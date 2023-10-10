@@ -14,6 +14,11 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Run Gosec Security Scanner
+        uses: securego/gosec@master
+        with:
+          args: ./...
+
       - name: Extract tag name
         id: get_tag
         run: echo "::set-output name=VERSION::${GITHUB_REF#refs/tags/}"
