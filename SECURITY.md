@@ -1,3 +1,6 @@
+-----BEGIN PGP SIGNED MESSAGE-----
+Hash: SHA256
+
 # Security Policy
 
 ## Supported Versions
@@ -8,10 +11,10 @@ As no breaking changes to existing features are planned, only the most recent ve
 
 The docker images are signed with cosign. The public key is available in the repository, on [https://wollomatic.de/socket-proxy/cosign.pub](https://wollomatic.de/socket-proxy/cosign.pub) and here:
 ```
------BEGIN PUBLIC KEY-----
+- -----BEGIN PUBLIC KEY-----
 MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEYdXlfRbkO6KqPU7Khn1mSjbOIaD3
 um421A0NeT1wi840iWNp6MVKyj3tpnAyaQcLgd5/22O+eEHY+5+EHwB+eA==
------END PUBLIC KEY-----
+- -----END PUBLIC KEY-----
 ```
 
 The signature is stored at Docker hub as well. For more information about cosign, see [https://github.com/sigstore/cosign#readme](https://github.com/sigstore/cosign#readme).
@@ -23,7 +26,7 @@ Please report vulnerabilities to security2025(at)wollomatic.de
 Feel free to encrypt the message if you like:
 
 ```
-- -----BEGIN PGP PUBLIC KEY BLOCK-----
+- - -----BEGIN PGP PUBLIC KEY BLOCK-----
 Comment: Benutzer-ID:	<security2025(at)wollomatic.de>
 Comment: Gültig seit:	30.12.2021 18:15
 Comment: Gültig bis:	31.12.2025 12:00
@@ -80,5 +83,21 @@ AGx0J/IYKvNwbYErCoOsqM78lZZ20hvKwDCW1jNEZibqiL98yhQhoEymTu9FHShR
 WrjWE3RoPNCEPKwCVSh08Y/bVcUyfkDNKkN3l8lT34TIEUOkzdXD2JLL6cogLpn2
 Q/PCqEw9
 =6UYI
-- -----END PGP PUBLIC KEY BLOCK-----
+- - -----END PGP PUBLIC KEY BLOCK-----
 ```
+-----BEGIN PGP SIGNATURE-----
+
+iQIzBAEBCAAdFiEE1XQkrHwmL0tE9FtXVYa3pNFebKcFAmUlklgACgkQVYa3pNFe
+bKf0IA/9ECqre6kojV3oE4KK5JRjHLHCNcwDHcu8WBOcf7gcZmAdkBf3oh3iBB8H
+wPhBcE3UWYRwT6dCGiTNct9KmpiB82JWX/kbGWNY501m8UTP04TB4M6Pp0ZowkkR
+GQgqcXSgFRyd6wvoVQVuQSLjCWwvjh+jzdQL24l038eskrXN6GaLXQbasCABDcma
+VeTe0BMtkQ+5EBRssMFQimgOod37AuMc3haJoAj4tfsJuH4pOCcU4v9NTF1fOc1u
+Gz3jty7v4LmQ/qShrYPXR0O5Id2Jttg5yqpYtox3ULN637UXlkGQSEREVep6lgYE
++9zBLm7lyjmX0jBI/YgJxWE8+BVL7SujnIl+MB8Jx9ySh+JYVQ/qDk79hL+1Cykk
+TFPtk9OWqjIHXvsePOCIpx5OhzGdV96OI+m5UapNbBw1EfYgEDGmF2R23bMQECVd
+HeGYgVeK/PqOc/sP1fVN9c7qbtEplU4AIcys3rugnn4XVsiHTY7SbxoUx+hZnYLO
+Dn0/xj8hIaV9kgVwIzIWhfAF47UsxlN162Rx2Kmqyr1INA7TWa+k+v6x5vc5iMul
+xTIJoNUgwtjneyZEceNFwJkjfAn1aT4Ruy4R2s0rWkvWYj/rbR9dgWurhgpnjJke
+kgnVHf8ZLligrqyP1HNZnm8bYGCnefdmlNPRt91/996219jKq7Y=
+=RUM/
+-----END PGP SIGNATURE-----
