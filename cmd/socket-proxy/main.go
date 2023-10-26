@@ -76,10 +76,10 @@ func main() {
 	}
 
 	// start the server in a goroutine
-	srv := &http.Server{
-		Addr:    cfg.ListenAddress,
-		Handler: http.HandlerFunc(handleHttpRequest),
-	}
+	srv := &http.Server{ // #nosec G112 -- intentionally do not timeout the client
+		Addr:    cfg.ListenAddress,                   // #nosec G112
+		Handler: http.HandlerFunc(handleHttpRequest), // #nosec G112
+	} // #nosec G112
 	go func() {
 		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			slog.Error("http server problem", "error", err)
