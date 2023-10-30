@@ -96,7 +96,7 @@ services:
       - '-watchdoginterval=3600' # check once per hour for socket availability
       - '-stoponwatchdog' # halt program on error and let compose restart it
       - '-shutdowngracetime=5' # wait 5 seconds before shutting down
-volumes:
+    volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
     networks:
       - docker-proxynet    # NEVER EVER expose this to the public internet!
