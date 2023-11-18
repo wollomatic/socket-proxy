@@ -43,7 +43,7 @@ jobs:
           platforms: linux/amd64,linux/arm/v7,linux/arm64
           push: true
           build-args: VERSION=${{ steps.get_tag.outputs.VERSION }}
-          tags: docker.io/${{ secrets.DOCKERHUB_USERNAME }}/socket-proxy:${{ steps.get_tag.outputs.VERSION }}
+          tags: docker.io/${{ secrets.DOCKERHUB_USERNAME }}/socket-proxy:${{ steps.get_tag.outputs.VERSION }},docker.io/${{ secrets.DOCKERHUB_USERNAME }}/socket-proxy:1
 
       - name: Sign images for all platforms
         run: cosign sign --yes --key env://COSIGN_PRIVATE_KEY docker.io/${{ secrets.DOCKERHUB_USERNAME }}/socket-proxy:${{ steps.get_tag.outputs.VERSION }}@${{ steps.build-and-push.outputs.digest }}

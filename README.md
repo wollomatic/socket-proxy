@@ -15,13 +15,16 @@ The source code is available on [GitHub: wollomatic/socket-proxy](https://github
 
 ### Warning
 
-You should know what you are doing. Accidentally exposing a Unix socket to the public internet by misconfiguration is a security nightmare.
+You should know what you are doing. Never expose socket-proxy to a public network. It is meant to be used in a secure environment only.
 
 ### Installing
 
 The container image is available on [Docker Hub: wollomatic/socket-proxy](https://hub.docker.com/r/wollomatic/socket-proxy).
 
-Every socket-proxy image is signed with Cosign. The public key is available on [GitHub: wollomatic/socket-proxy/main/cosign.pub](https://raw.githubusercontent.com/wollomatic/socket-proxy/main/cosign.pub) and [https://wollomatic.de/socket-proxy/cosign.pub](https://wollomatic.de/socket-proxy/cosign.pub). Please refer to the [Security Policy](https://github.com/wollomatic/socket-proxy/blob/main/SECURITY.md) for more information.
+To pin one specific version, use the version tag (for example, `wollomatic/socket-proxy:1.0.1`).
+To always use the most recent version, use the `1` tag (`wollomatic/socket-proxy:1`). This tag will be valid as long as there is no breaking change in the deployment.
+
+Every socket-proxy image is signed with Cosign. The public key is available on [GitHub: wollomatic/socket-proxy/main/cosign.pub](https://raw.githubusercontent.com/wollomatic/socket-proxy/main/cosign.pub) and [https://wollomatic.de/socket-proxy/cosign.pub](https://wollomatic.de/socket-proxy/cosign.pub). For more information, please refer to the [Security Policy](https://github.com/wollomatic/socket-proxy/blob/main/SECURITY.md).
 
 ### Allowing access
 
