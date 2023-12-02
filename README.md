@@ -13,6 +13,8 @@ The source code is available on [GitHub: wollomatic/socket-proxy](https://github
 
 ## Getting Started
 
+Some examples can be found in the [wiki](https://github.com/wollomatic/socket-proxy/wiki).
+
 ### Warning
 
 You should know what you are doing. Never expose socket-proxy to a public network. It is meant to be used in a secure environment only.
