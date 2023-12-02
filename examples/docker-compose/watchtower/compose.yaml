@@ -1,0 +1,58 @@
+services:
+  dockerproxy:
+    image: wollomatic/socket-proxy:1
+    command:
+      - '-loglevel=debug'
+      - '-allowfrom=192.168.254.0/29'
+      - '-listenip=0.0.0.0'
+      - '-allowGET=/v1\..{2}/(containers/.*|images/.*)'
+      - '-allowPOST=/v1\..{2}/(containers/.*|images/.*|networks/.*)'
+      - '-allowDELETE=/v1\..{2}/(containers/.*|images/.*)'
+      - '-watchdoginterval=3600'
+      - '-stoponwatchdog'
+      - '-shutdowngracetime=10'
+    restart: unless-stopped
+    read_only: true
+    mem_limit: 64M
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges
+    user: 65534:998 # change gid from 998 to the gid of the docker group on your host
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks:
+      - docker-proxynet
+
+  watchtower:
+    image: containrrr/watchtower:1.7.1
+    depends_on:
+      - dockerproxy
+    command:
+      - '--host=tcp://dockerproxy:2375'
+      - '--schedule=0 30 4 * * *'
+      - '--debug'
+      - '--stop-timeout=5m'
+      - '--cleanup'
+    user: 65534:65534
+    read_only: true
+    mem_limit: 256M
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges
+    networks:
+      - docker-proxynet
+      - watchtower
+
+networks:
+  docker-proxynet:
+    internal: true
+    attachable: false
+    ipam:
+      config:
+        - subnet: 192.168.254.0/29
+
+  watchtower:
+    driver: bridge
+    attachable: false
