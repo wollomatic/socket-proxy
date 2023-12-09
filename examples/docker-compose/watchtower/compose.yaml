@@ -21,6 +21,8 @@ services:
     user: 65534:998 # change gid from 998 to the gid of the docker group on your host
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
+    labels:
+      - com.centurylinklabs.watchtower.enable=false
     networks:
       - docker-proxynet
 
