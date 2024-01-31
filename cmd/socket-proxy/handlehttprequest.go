@@ -14,7 +14,7 @@ import (
 func handleHttpRequest(w http.ResponseWriter, r *http.Request) {
 
 	// check if the client's IP is allowed to access
-	allowedIP, err := isAllowedIP(r.RemoteAddr)
+	allowedIP, err := isAllowedClient(r.RemoteAddr)
 	if err != nil {
 		slog.Error("invalid RemoteAddr format", "reason", err, "method", r.Method, "URL", r.URL, "client", r.RemoteAddr)
 		sendHTTPError(w, http.StatusInternalServerError)
@@ -41,24 +41,38 @@ func handleHttpRequest(w http.ResponseWriter, r *http.Request) {
 	socketProxy.ServeHTTP(w, r) // proxy the request
 }
 
-// isAllowedIP checks if the given remote address is allowed to connect to the proxy.
+// isAllowedClient checks if the given remote address is allowed to connect to the proxy.
 // The IP address is extracted from a RemoteAddr string (the part before the colon).
-func isAllowedIP(remoteAddr string) (bool, error) {
-	// Get the IP address from the remote address string
-	ipStr, _, err := net.SplitHostPort(remoteAddr)
+func isAllowedClient(remoteAddr string) (bool, error) {
+	// Get the client IP address from the remote address string
+	clientIPStr, _, err := net.SplitHostPort(remoteAddr)
 	if err != nil {
 		return false, err
 	}
 	// Parse the IP address
-	ip := net.ParseIP(ipStr)
-	if ip == nil {
+	clientIP := net.ParseIP(clientIPStr)
+	if clientIP == nil {
 		return false, errors.New("invalid IP format")
 	}
-	// check if IP address is in allowed network
-	if !config.AllowedNetwork.Contains(ip) {
+
+	_, allowedIPNet, err := net.ParseCIDR(cfg.AllowFrom)
+	if err == nil {
+		// AllowFrom is a valid CIDR, so check if IP address is in allowed network
+		return allowedIPNet.Contains(clientIP), nil
+	} else {
+		// AllowFrom is not a valid CIDR, so try to resolve it via DNS
+		ips, err := net.LookupIP(cfg.AllowFrom)
+		if err != nil {
+			return false, errors.New("error looking up allowed client hostname: " + err.Error())
+		}
+		for _, ip := range ips {
+			// Check if IP address is one of the resolved IPs
+			if ip.Equal(clientIP) {
+				return true, nil
+			}
+		}
 		return false, nil
 	}
-	return true, nil
 }
 
 // sendHTTPError sends a HTTP error with the given status code.
