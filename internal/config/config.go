@@ -39,7 +39,6 @@ type Config struct {
 }
 
 var (
-	AllowedNetwork  *net.IPNet // TODO: remove
 	AllowedRequests map[string]*regexp.Regexp
 )
 
