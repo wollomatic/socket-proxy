@@ -4,6 +4,8 @@
 `socket-proxy` is a lightweight, secure-by-default unix socket proxy. Although it was created to proxy the docker socket to Traefik, it can be also used for other purposes.
 It is heavily inspired by [tecnativa/docker-socket-proxy](https://github.com/Tecnativa/docker-socket-proxy). 
 
+As an additional benefit socket-proxy can be used to examine the API calls of the client application.
+
 The advantage over other solutions is the very slim container image ("FROM scratch") without any external dependencies (no OS, no packages, just the Go standard library).
 It is designed with security in mind, so there are secure defaults, and there is an extra security layer (IP address-based access control).
 
@@ -13,7 +15,7 @@ The source code is available on [GitHub: wollomatic/socket-proxy](https://github
 
 ## Getting Started
 
-Some examples can be found in the [wiki](https://github.com/wollomatic/socket-proxy/wiki).
+Some examples can be found in the [wiki](https://github.com/wollomatic/socket-proxy/wiki) and in the `examples` directory of the repo.
 
 ### Warning
 
@@ -41,6 +43,8 @@ Socket-proxy listens per default only on `127.0.0.1`. Depending what you need, y
 #### Setting up the IP address allowlist
 
 Per default, only `127.0.0.1/32` ist allowed to connect to socket-proxy. Depending on your needs, you may want to set another allowlist with the `-allowfrom` parameter.
+
+Since version 1.1.0, not only IP networks can be configured, but also hostnames. So it is now possible to explicitly allow only one specific client to connect to the proxy, for example `-allowfrom=traefik`
 
 #### Setting up the allowlist for requests
 
@@ -73,7 +77,9 @@ Health checks are disables by default. As the socket-proxy container may not be 
       retries: 2
 # [...]
 ```
+### Socket watchdog
 
+In certain circumstances (for example, after a Docker engine update), the socket connection may break, causing the client application to fail. To prevent this, the socket-proxy can be configured to check the socket availability at regular intervals. If the socket is not available, the socket-proxy will be stopped, so it can be restarted by the container orchestrator. This feature is disabled by default. To enable it, set the `-watchdoginterval` parameter to the desired interval in seconds and set the `-stoponwatchdog` parameter. If `-stoponwatchdog`is not set, the watchdog will only log an error message and continue to run. 
 
 ### Example for proxying the docker socket to Traefik
 
@@ -122,6 +128,22 @@ networks:
   docker-proxynet:
     driver: bridge
     internal: true
+```
+
+### Examining the API calls of the client application
+
+To just log the API calls of the client application, set the log level to `DEBUG` and allow all requests. Then, you can examine the log output to determine which requests are made by the client application. Allowing all requests can be done by setting the following parameters:
+```
+- '-loglevel=debug'
+- '-allowGET=.*'
+- '-allowHEAD=.*'
+- '-allowPOST=.*'
+- '-allowPUT=.*'
+- '-allowPATCH=.*'
+- '-allowDELETE=.*'
+- '-allowCONNECT=.*'
+- '-allowTRACE=.*'
+- '-allowOPTIONS=.*'
 ```
 
 ### Parameters
