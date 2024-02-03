@@ -4,6 +4,8 @@
 `socket-proxy` is a lightweight, secure-by-default unix socket proxy. Although it was created to proxy the docker socket to Traefik, it can be also used for other purposes.
 It is heavily inspired by [tecnativa/docker-socket-proxy](https://github.com/Tecnativa/docker-socket-proxy). 
 
+As an additional benefit socket-proxy can be used to examine the API calls of the client application.
+
 The advantage over other solutions is the very slim container image ("FROM scratch") without any external dependencies (no OS, no packages, just the Go standard library).
 It is designed with security in mind, so there are secure defaults, and there is an extra security layer (IP address-based access control).
 
@@ -13,7 +15,7 @@ The source code is available on [GitHub: wollomatic/socket-proxy](https://github
 
 ## Getting Started
 
-Some examples can be found in the [wiki](https://github.com/wollomatic/socket-proxy/wiki).
+Some examples can be found in the [wiki](https://github.com/wollomatic/socket-proxy/wiki) and in the `examples` directory of the repo.
 
 ### Warning
 
@@ -41,6 +43,8 @@ Socket-proxy listens per default only on `127.0.0.1`. Depending what you need, y
 #### Setting up the IP address allowlist
 
 Per default, only `127.0.0.1/32` ist allowed to connect to socket-proxy. Depending on your needs, you may want to set another allowlist with the `-allowfrom` parameter.
+
+Since version 1.1.0, not only IP networks can be configured, but also hostnames. So it is now possible to explicitly allow only one specific client to connect to the proxy, for example `-allowfrom=traefik`
 
 #### Setting up the allowlist for requests
 
@@ -73,7 +77,9 @@ Health checks are disables by default. As the socket-proxy container may not be 
       retries: 2
 # [...]
 ```
+### Socket watchdog
 
+In certain circumstances (for example, after a Docker engine update), the socket connection may break, causing the client application to fail. To prevent this, the socket-proxy can be configured to check the socket availability at regular intervals. If the socket is not available, the socket-proxy will be stopped, so it can be restarted by the container orchestrator. This feature is disabled by default. To enable it, set the `-watchdoginterval` parameter to the desired interval in seconds and set the `-stoponwatchdog` parameter. If `-stoponwatchdog`is not set, the watchdog will only log an error message and continue to run. 
 
 ### Example for proxying the docker socket to Traefik
 
@@ -124,20 +130,36 @@ networks:
     internal: true
 ```
 
+### Examining the API calls of the client application
+
+To just log the API calls of the client application, set the log level to `DEBUG` and allow all requests. Then, you can examine the log output to determine which requests are made by the client application. Allowing all requests can be done by setting the following parameters:
+```
+- '-loglevel=debug'
+- '-allowGET=.*'
+- '-allowHEAD=.*'
+- '-allowPOST=.*'
+- '-allowPUT=.*'
+- '-allowPATCH=.*'
+- '-allowDELETE=.*'
+- '-allowCONNECT=.*'
+- '-allowTRACE=.*'
+- '-allowOPTIONS=.*'
+```
+
 ### Parameters
 
-| Parameter            | Default Value          | Description                                                                                                                                                                                                                                                                                                                                                                                                                                          |
-|----------------------|------------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `-allowfrom`         | `127.0.0.1/32`         | Specifies the IP addresses of the clients allowed to connect to the proxy. The default value is `127.0.0.1/32`, which means only localhost is allowed. This default configuration may not be useful in most cases, but it is because of a secure-by-default design. To allow all IPv4 addresses, set `-allowfrom=0.0.0.0/0`. Please remember that socket-proxy should never be exposed to a public network, regardless of this extra security layer. |
-| `-allowhealthcheck`  | (not set)              | If set, it allows the included health check binary to check the socket connection via TCP port 55555 (socket-proxy then listens on `127.0.0.1:55555/health`)                                                                                                                                                                                                                                                                                         |
-| `-listenip`          | `127.0.0.1`            | Specifies the IP address the server will bind on. Default is only the internal network.                                                                                                                                                                                                                                                                                                                                                              |
-| `-logjson`           | (not set)              | If set, it enables logging in JSON format. If unset, docker-proxy logs in plain text format.                                                                                                                                                                                                                                                                                                                                                         |
-| `-loglevel`          | `INFO`                 | Sets the log level. Accepted values are: `DEBUG`, `INFO`, `WARN`, `ERROR`.                                                                                                                                                                                                                                                                                                                                                                           |
-| `-proxyport`         | `2375`                 | Defines the TCP port the proxy listens to.                                                                                                                                                                                                                                                                                                                                                                                                           |
-| `-shutdowngracetime` | `10`                   | Defines the time in seconds to wait before forcing the shutdown after sigtern or sigint (socket-proxy first tries to graceful shut down the TCP server)                                                                                                                                                                                                                                                                                              |
-| `-socketpath`        | `/var/run/docker.sock` | Specifies the UNIX socket path to connect to. By default, it connects to the Docker daemon socket.                                                                                                                                                                                                                                                                                                                                                   |
-| `-stoponwatchdog`    | (not set)              | If set, socket-proxy will be stopped if the watchdog detects that the unix socket is not available.                                                                                                                                                                                                                                                                                                                                                  |
-| `-watchdoginterval`  | `0`                    | Check for socket availabibity every x seconds (disable checks, if not set or value is 0)                                                                                                                                                                                                                                                                                                                                                             |
+| Parameter            | Default Value          | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+|----------------------|------------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `-allowfrom`         | `127.0.0.1/32`         | Specifies the IP addresses of the clients or the hostname of one specific client allowed to connect to the proxy. The default value is `127.0.0.1/32`, which means only localhost is allowed. This default configuration may not be useful in most cases, but it is because of a secure-by-default design. To allow all IPv4 addresses, set `-allowfrom=0.0.0.0/0`. Please remember that socket-proxy should never be exposed to a public network, regardless of this extra security layer. |
+| `-allowhealthcheck`  | (not set)              | If set, it allows the included health check binary to check the socket connection via TCP port 55555 (socket-proxy then listens on `127.0.0.1:55555/health`)                                                                                                                                                                                                                                                                                                                                |
+| `-listenip`          | `127.0.0.1`            | Specifies the IP address the server will bind on. Default is only the internal network.                                                                                                                                                                                                                                                                                                                                                                                                     |
+| `-logjson`           | (not set)              | If set, it enables logging in JSON format. If unset, docker-proxy logs in plain text format.                                                                                                                                                                                                                                                                                                                                                                                                |
+| `-loglevel`          | `INFO`                 | Sets the log level. Accepted values are: `DEBUG`, `INFO`, `WARN`, `ERROR`.                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| `-proxyport`         | `2375`                 | Defines the TCP port the proxy listens to.                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| `-shutdowngracetime` | `10`                   | Defines the time in seconds to wait before forcing the shutdown after sigtern or sigint (socket-proxy first tries to graceful shut down the TCP server)                                                                                                                                                                                                                                                                                                                                     |
+| `-socketpath`        | `/var/run/docker.sock` | Specifies the UNIX socket path to connect to. By default, it connects to the Docker daemon socket.                                                                                                                                                                                                                                                                                                                                                                                          |
+| `-stoponwatchdog`    | (not set)              | If set, socket-proxy will be stopped if the watchdog detects that the unix socket is not available.                                                                                                                                                                                                                                                                                                                                                                                         |
+| `-watchdoginterval`  | `0`                    | Check for socket availabibity every x seconds (disable checks, if not set or value is 0)                                                                                                                                                                                                                                                                                                                                                                                                    |
 
 ## License
 

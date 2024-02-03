@@ -3,7 +3,7 @@ services:
     image: wollomatic/socket-proxy:1
     command:
       - '-loglevel=info'
-      - '-allowfrom=192.168.254.8/29' # allow only the small subnet "docker-proxynet"
+      - '-allowfrom=dozzle' # allow only the small subnet "docker-proxynet"
       - '-listenip=0.0.0.0'
       - '-allowGET=/v1\..{2}/(containers/.*|events)'
       - '-allowHEAD=/_ping'
@@ -49,9 +49,6 @@ networks:
   docker-proxynet:
     internal: true
     attachable: false
-    ipam:
-      config:
-        - subnet: 192.168.254.8/29
   dozzle:
     driver: bridge
     attachable: false

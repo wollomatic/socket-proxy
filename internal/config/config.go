@@ -27,6 +27,7 @@ const (
 )
 
 type Config struct {
+	AllowFrom         string
 	AllowHealthcheck  bool
 	LogJSON           bool
 	StopOnWatchdog    bool
@@ -38,7 +39,6 @@ type Config struct {
 }
 
 var (
-	AllowedNetwork  *net.IPNet
 	AllowedRequests map[string]*regexp.Regexp
 )
 
@@ -66,12 +66,11 @@ var mr = []methodRegex{
 func InitConfig() (*Config, error) {
 	var (
 		cfg       Config
-		allowFrom string
 		listenIP  string
 		proxyPort uint
 		logLevel  string
 	)
-	flag.StringVar(&allowFrom, "allowfrom", defaultAllowFrom, "allowed IPs to connect to the proxy")
+	flag.StringVar(&cfg.AllowFrom, "allowfrom", defaultAllowFrom, "allowed IPs or hostname to connect to the proxy")
 	flag.BoolVar(&cfg.AllowHealthcheck, "allowhealthcheck", defaultAllowHealthcheck, "allow health check requests (HEAD http://localhost:55555/health)")
 	flag.BoolVar(&cfg.LogJSON, "logjson", defaultLogJSON, "log in JSON format (otherwise log in plain text")
 	flag.StringVar(&listenIP, "listenip", defaultListenIP, "ip address to listen on")
@@ -85,13 +84,6 @@ func InitConfig() (*Config, error) {
 		flag.StringVar(&mr[i].regexString, "allow"+mr[i].method, mr[i].regexString, "regex for "+mr[i].method+" requests (not set means method is not allowed)")
 	}
 	flag.Parse()
-
-	// parse allowFrom to check if it is a valid CIDR
-	var err error
-	_, AllowedNetwork, err = net.ParseCIDR(allowFrom)
-	if err != nil {
-		return nil, fmt.Errorf("invalid CIDR \"%s\" for allowfrom: %s", allowFrom, err)
-	}
 
 	// pcheck listenIP and proxyPort
 	if net.ParseIP(listenIP) == nil {
