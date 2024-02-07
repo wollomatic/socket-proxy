@@ -102,7 +102,7 @@ services:
     command:
       - '-loglevel=debug'
       - '-listenip=0.0.0.0'
-      - '-allowfrom=0.0.0.0/0' # allow all IPv4 addresses (know what you are doing!)
+      - '-allowfrom=traefik' # allow only hostname "traefik" to connect
       - '-allowGET=/v1\..{1,2}/(version|containers/.*|events.*)'
       - '-watchdoginterval=3600' # check once per hour for socket availability
       - '-stoponwatchdog' # halt program on error and let compose restart it
