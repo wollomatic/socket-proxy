@@ -34,6 +34,7 @@ func startSocketWatchdog(socketPath string, interval uint, stopOnWatchdog bool) 
 		if err := checkSocketAvailability(socketPath); err != nil {
 			slog.Warn("Watchdog: Socket is unavailable", "error", err)
 			if stopOnWatchdog {
+				slog.Warn("Watchdog: Stopping socket-proxy because of unavailable socket")
 				os.Exit(10)
 			}
 		}
