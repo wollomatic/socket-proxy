@@ -13,14 +13,14 @@ const dialTimeout = 5 // timeout in seconds for the socket connection
 
 // checkSocketAvailability tries to connect to the socket and returns an error if it fails.
 func checkSocketAvailability(socketPath string) error {
-	slog.Debug("checking socket availability")
+	slog.Debug("checking socket availability", "origin", "checkSocketAvailability")
 	conn, err := net.DialTimeout("unix", socketPath, dialTimeout*time.Second)
 	if err != nil {
 		return err
 	}
 	err = conn.Close()
 	if err != nil {
-		slog.Warn("Watchdog: Error closing socket", "error", err)
+		slog.Error("error closing socket", "origin", "checkSocketAvailability", "error", err)
 	}
 	return nil
 }
@@ -32,8 +32,9 @@ func startSocketWatchdog(socketPath string, interval uint, stopOnWatchdog bool) 
 
 	for range ticker.C {
 		if err := checkSocketAvailability(socketPath); err != nil {
-			slog.Warn("Watchdog: Socket is unavailable", "error", err)
+			slog.Error("socket is unavailable", "origin", "watchdog", "error", err)
 			if stopOnWatchdog {
+				slog.Warn("stopping socket-proxy because of unavailable socket", "origin", "watchdog")
 				os.Exit(10)
 			}
 		}
@@ -51,7 +52,7 @@ func healthCheckServer(socketPath string) {
 		}
 		err := checkSocketAvailability(socketPath)
 		if err != nil {
-			slog.Error("health check failed", "error", err)
+			slog.Error("health check failed", "origin", "healthcheck", "error", err)
 			w.WriteHeader(http.StatusServiceUnavailable)
 			return
 		}
@@ -67,6 +68,6 @@ func healthCheckServer(socketPath string) {
 	}
 
 	if err := hcSrv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-		slog.Error("healthcheck http server problem", "error", err)
+		slog.Error("healthcheck http server problem", "origin", "healthcheck", "error", err)
 	}
 }

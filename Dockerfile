@@ -1,10 +1,11 @@
-FROM --platform=$BUILDPLATFORM golang:1.21.6-alpine AS build
+# syntax=docker/dockerfile:1
+FROM --platform=$BUILDPLATFORM golang:1.21.7-alpine AS build
 WORKDIR /application
 COPY . ./
 ARG TARGETOS
 ARG TARGETARCH
 ARG VERSION
-RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH \
+RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} \
     go build -tags=netgo -gcflags=all=-d=checkptr -ldflags="-w -s -X 'main.version=${VERSION}'" -trimpath \
     -o / ./...
 

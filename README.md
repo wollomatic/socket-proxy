@@ -1,15 +1,15 @@
 # socket-proxy
 
 ## About
-`socket-proxy` is a lightweight, secure-by-default unix socket proxy. Although it was created to proxy the docker socket to Traefik, it can be also used for other purposes.
-It is heavily inspired by [tecnativa/docker-socket-proxy](https://github.com/Tecnativa/docker-socket-proxy). 
+`socket-proxy` is a lightweight, secure-by-default unix socket proxy. Although it was created to proxy the docker socket to Traefik, it can also be used for other purposes.
+It is heavily inspired by [tecnativa/docker-socket-proxy](https://github.com/Tecnativa/docker-socket-proxy).
 
-As an additional benefit socket-proxy can be used to examine the API calls of the client application.
+As an additional benefit, socket-proxy can be used to examine the API calls of the client application.
 
-The advantage over other solutions is the very slim container image ("FROM scratch") without any external dependencies (no OS, no packages, just the Go standard library).
-It is designed with security in mind, so there are secure defaults, and there is an extra security layer (IP address-based access control).
+The advantage over other solutions is the very slim container image (from-scratch-image) without any external dependencies (no OS, no packages, just the Go standard library).
+It is designed with security in mind, so there are secure defaults and an additional security layer (IP address-based access control) compared to most other solutions.
 
-Configuration of the allowlist is done for each http method separately using the Go regexp syntax. This allows fine-grained control over the allowed http methods.
+The allowlist is configured for each HTTP method separately using the Go regexp syntax, allowing fine-grained control over the allowed HTTP methods.
 
 The source code is available on [GitHub: wollomatic/socket-proxy](https://github.com/wollomatic/socket-proxy).
 
@@ -28,31 +28,35 @@ The container image is available on [Docker Hub: wollomatic/socket-proxy](https:
 To pin one specific version, use the version tag (for example, `wollomatic/socket-proxy:1.0.1`).
 To always use the most recent version, use the `1` tag (`wollomatic/socket-proxy:1`). This tag will be valid as long as there is no breaking change in the deployment.
 
-Every socket-proxy image is signed with Cosign. The public key is available on [GitHub: wollomatic/socket-proxy/main/cosign.pub](https://raw.githubusercontent.com/wollomatic/socket-proxy/main/cosign.pub) and [https://wollomatic.de/socket-proxy/cosign.pub](https://wollomatic.de/socket-proxy/cosign.pub). For more information, please refer to the [Security Policy](https://github.com/wollomatic/socket-proxy/blob/main/SECURITY.md).
+There may be an additional docker image with the `testing`-tag. This image is only for testing. Likely, documentation for the `testing` image could only be found in the GitHub commit messages. It is not recommended to use the `testing` image in production.
+
+Every socket-proxy release image is signed with Cosign. The public key is available on [GitHub: wollomatic/socket-proxy/main/cosign.pub](https://raw.githubusercontent.com/wollomatic/socket-proxy/main/cosign.pub) and [https://wollomatic.de/socket-proxy/cosign.pub](https://wollomatic.de/socket-proxy/cosign.pub). For more information, please refer to the [Security Policy](https://github.com/wollomatic/socket-proxy/blob/main/SECURITY.md).
 
 ### Allowing access
 
-Because of the secure-by-default design, you need to explicitly allow every access.
+Because of the secure-by-default design, you need to allow every access explicitly.
 
-This is meant to be an additional layer of security. It is not a replacement for other security measures, such as firewalls, network segmentation, etc. Do not expose socket-proxy to a public network.
+This is meant to be an additional layer of security. It does not replace other security measures, such as firewalls, network segmentation, etc. Do not expose socket-proxy to a public network.
 
 #### Setting up the TCP listener
 
-Socket-proxy listens per default only on `127.0.0.1`. Depending what you need, you may want to set another listener address with the `-listenip` parameter.
+Socket-proxy listens per default only on `127.0.0.1`. Depending on what you need, you may want to set another listener address with the `-listenip` parameter. In almost every use case, `-listenip=0.0.0.0` will be the correct configuration when using socket-proxy in a docker image.
 
 #### Setting up the IP address allowlist
 
-Per default, only `127.0.0.1/32` ist allowed to connect to socket-proxy. Depending on your needs, you may want to set another allowlist with the `-allowfrom` parameter.
+Per default, only `127.0.0.1/32` is allowed to connect to socket-proxy. You may want to set another allowlist with the `-allowfrom` parameter, depending on your needs.
 
-Since version 1.1.0, not only IP networks can be configured, but also hostnames. So it is now possible to explicitly allow only one specific client to connect to the proxy, for example `-allowfrom=traefik`
+Since version 1.1.0, not only IP networks but also hostnames can be configured. So it is now possible to explicitly allow only one specific client to connect to the proxy, for example, `-allowfrom=traefik`
+
+Using the hostname is an easy-to-configure way to have more security. Access to the socket proxy will not even be permitted from the host system.
 
 #### Setting up the allowlist for requests
 
 You must set up regular expressions for each HTTP method the client application needs access to.
 
-The name of a parameter should be "-allow", followed by the HTTP method name (for example, `-allowGET`). If that parameter is set and the incoming request matches the method and path matching the regexp, the request will be allowed. If it is not set, then the corresponding HTTP method will not be allowed.
+The name of a parameter should be "-allow", followed by the HTTP method name (for example, `-allowGET`). The request will be allowed if that parameter is set and the incoming request matches the method and path matching the regexp. If it is not set, then the corresponding HTTP method will not be allowed.
 
-Use Go's regexp syntax to create the patterns for these parameters. To avoid insecure configurations, the characters ^ at the beginning of the string and $ at the end of the string are automatically added. Note: invalid regexp results in program termination.
+Use Go's regexp syntax to create the patterns for these parameters. To avoid insecure configurations, the characters ^ at the beginning and $ at the end of the string are automatically added. Note: invalid regexp results in program termination.
 
 Examples:
 + `'-allowGET=/v1\..{1,2}/(version|containers/.*|events.*)'` could be used for allowing access to the docker socket for Traefik v2.
@@ -60,13 +64,13 @@ Examples:
 
 For more information, refer to the [Go regexp documentation](https://golang.org/pkg/regexp/syntax/).
 
-A good online regexp tester is [regex101.com](https://regex101.com/).
+An excellent online regexp tester is [regex101.com](https://regex101.com/).
 
 To determine which HTTP requests your client application uses, you could switch socket-proxy to debug log level and look at the log output while allowing all requests in a secure environment.
 
 ### Container health check
 
-Health checks are disables by default. As the socket-proxy container may not be exposed to a public network, there is a separate health check binary included in the container image. To activate the health check, the `-allowhealthcheck` parameter must be set. Then, a health check is possible for example with the following docker-compose snippet:
+Health checks are disabled by default. As the socket-proxy container may not be exposed to a public network, a separate health check binary is included in the container image. To activate the health check, the `-allowhealthcheck` parameter must be set. Then, a health check is possible for example with the following docker-compose snippet:
 
 ``` compose.yaml
 # [...]
@@ -79,11 +83,11 @@ Health checks are disables by default. As the socket-proxy container may not be 
 ```
 ### Socket watchdog
 
-In certain circumstances (for example, after a Docker engine update), the socket connection may break, causing the client application to fail. To prevent this, the socket-proxy can be configured to check the socket availability at regular intervals. If the socket is not available, the socket-proxy will be stopped, so it can be restarted by the container orchestrator. This feature is disabled by default. To enable it, set the `-watchdoginterval` parameter to the desired interval in seconds and set the `-stoponwatchdog` parameter. If `-stoponwatchdog`is not set, the watchdog will only log an error message and continue to run. 
+In certain circumstances (for example, after a Docker engine update), the socket connection may break, causing the client application to fail. To prevent this, the socket-proxy can be configured to check the socket availability at regular intervals. If the socket is not available, the socket-proxy will be stopped so the container orchestrator can restart it. This feature is disabled by default. To enable it, set the `-watchdoginterval` parameter to the desired interval in seconds and set the `-stoponwatchdog` parameter. If `-stoponwatchdog`is not set, the watchdog will only log an error message and continue to run (the problem would still exist in that case).
 
 ### Example for proxying the docker socket to Traefik
 
-You need to know how to install Traefik in this environment. See [wollomatic/traefik2-hardened](https://github.com/wollomatic/traefik2-hardened) for an example (that repo still uses tecnativa's socket proxy).
+You need to know how to install Traefik in this environment. See [wollomatic/traefik2-hardened](https://github.com/wollomatic/traefik2-hardened) for an example.
 
 The image can be deployed with docker compose:
 
@@ -100,9 +104,9 @@ services:
     security_opt:
       - no-new-privileges
     command:
-      - '-loglevel=debug'
+      - '-loglevel=info'
       - '-listenip=0.0.0.0'
-      - '-allowfrom=0.0.0.0/0' # allow all IPv4 addresses (know what you are doing!)
+      - '-allowfrom=traefik' # allow only hostname "traefik" to connect
       - '-allowGET=/v1\..{1,2}/(version|containers/.*|events.*)'
       - '-watchdoginterval=3600' # check once per hour for socket availability
       - '-stoponwatchdog' # halt program on error and let compose restart it
@@ -132,7 +136,7 @@ networks:
 
 ### Examining the API calls of the client application
 
-To just log the API calls of the client application, set the log level to `DEBUG` and allow all requests. Then, you can examine the log output to determine which requests are made by the client application. Allowing all requests can be done by setting the following parameters:
+To log the API calls of the client application, set the log level to `DEBUG` and allow all requests. Then, you can examine the log output to determine which requests the client application makes. Allowing all requests can be done by setting the following parameters:
 ```
 - '-loglevel=debug'
 - '-allowGET=.*'
