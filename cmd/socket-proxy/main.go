@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"github.com/wollomatic/socket-proxy/internal/config"
 	"log/slog"
 	"net"
@@ -21,7 +22,7 @@ const (
 )
 
 var (
-	version     = "0.1.0"
+	version     = "dev" // will be overwritten by build system
 	socketProxy *httputil.ReverseProxy
 	cfg         *config.Config
 )
@@ -55,8 +56,19 @@ func main() {
 	} else {
 		slog.Info("watchdog disabled")
 	}
-	for method, regex := range config.AllowedRequests {
-		slog.Info("configured allowed request", "method", method, "regex", regex)
+
+	// print request allow list
+	if cfg.LogJSON {
+		for method, regex := range config.AllowedRequests {
+			slog.Info("configured allowed request", "method", method, "regex", regex)
+		}
+	} else {
+		// don't use slog here, as we want to print the regexes as they are
+		// see https://github.com/wollomatic/socket-proxy/issues/11
+		fmt.Printf("Request allowlist:\n   %-8s %s\n", "Method", "Regex")
+		for method, regex := range config.AllowedRequests {
+			fmt.Printf("   %-8s %s\n", method, regex)
+		}
 	}
 
 	// check if the socket is available
