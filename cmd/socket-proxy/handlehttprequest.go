@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"strings"
 )
 
 // handleHttpRequest checks if the request is allowed and sends it to the proxy.
@@ -16,9 +17,7 @@ func handleHttpRequest(w http.ResponseWriter, r *http.Request) {
 	// check if the client's IP is allowed to access
 	allowedIP, err := isAllowedClient(r.RemoteAddr)
 	if err != nil {
-		slog.Error("invalid RemoteAddr format", "reason", err, "method", r.Method, "URL", r.URL, "client", r.RemoteAddr)
-		sendHTTPError(w, http.StatusInternalServerError)
-		return
+		slog.Warn("cannot get valid IP address for client allowlist check", "reason", err, "method", r.Method, "URL", r.URL, "client", r.RemoteAddr)
 	}
 	if !allowedIP {
 		communicateBlockedRequest(w, r, "forbidden IP", http.StatusForbidden)
@@ -61,14 +60,18 @@ func isAllowedClient(remoteAddr string) (bool, error) {
 		return allowedIPNet.Contains(clientIP), nil
 	} else {
 		// AllowFrom is not a valid CIDR, so try to resolve it via DNS
-		ips, err := net.LookupIP(cfg.AllowFrom)
-		if err != nil {
-			return false, errors.New("error looking up allowed client hostname: " + err.Error())
-		}
-		for _, ip := range ips {
-			// Check if IP address is one of the resolved IPs
-			if ip.Equal(clientIP) {
-				return true, nil
+		// split over comma to support multiple hostnames
+		allowFroms := strings.Split(cfg.AllowFrom, ",")
+		for _, allowFrom := range allowFroms {
+			ips, err := net.LookupIP(allowFrom)
+			if err != nil {
+				slog.Warn("error looking up allowed client hostname", "hostname", allowFrom, "error", err.Error())
+			}
+			for _, ip := range ips {
+				// Check if IP address is one of the resolved IPs
+				if ip.Equal(clientIP) {
+					return true, nil
+				}
 			}
 		}
 		return false, nil
