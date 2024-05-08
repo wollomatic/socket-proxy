@@ -168,8 +168,11 @@ To log the API calls of the client application, set the log level to `DEBUG` and
 ### Changelog
 
 1.0 - initial release
+
 1.1 - add hostname support for `-allowfrom` parameter
+
 1.2 - reformat logging of allowlist on program start
+
 1.3 - allow multiple, comma-separated hostnames in `-allowfrom` parameter
 
 ## License
