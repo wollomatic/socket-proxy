@@ -35,4 +35,4 @@ jobs:
           platforms: linux/amd64,linux/arm64
           push: true
           build-args: VERSION=testing-${{ github.sha }}
-          tags: docker.io/${{ secrets.DOCKERHUB_USERNAME }}/socket-proxy:testing
+          tags: docker.io/wollomatic/socket-proxy:testing,docker.io/wollomatic/socket-proxy:testing-${{ github.sha }}
