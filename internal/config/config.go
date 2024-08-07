@@ -11,8 +11,6 @@ import (
 	"strings"
 )
 
-const LogSourcePosition = false // set to true to log the source position (file and line) of the log message
-
 const (
 	defaultAllowFrom         = "127.0.0.1/32"         // allowed IPs to connect to the proxy
 	defaultAllowHealthcheck  = false                  // allow health check requests (HEAD http://localhost:55555/health)
@@ -27,6 +25,7 @@ const (
 )
 
 type Config struct {
+	AllowedRequests   map[string]*regexp.Regexp
 	AllowFrom         string
 	AllowHealthcheck  bool
 	LogJSON           bool
@@ -37,10 +36,6 @@ type Config struct {
 	ListenAddress     string
 	SocketPath        string
 }
-
-var (
-	AllowedRequests map[string]*regexp.Regexp
-)
 
 // used for list of allowed requests
 type methodRegex struct {
@@ -85,7 +80,7 @@ func InitConfig() (*Config, error) {
 	}
 	flag.Parse()
 
-	// pcheck listenIP and proxyPort
+	// check listenIP and proxyPort
 	if net.ParseIP(listenIP) == nil {
 		return nil, fmt.Errorf("invalid IP \"%s\" for listenip", listenIP)
 	}
@@ -109,14 +104,14 @@ func InitConfig() (*Config, error) {
 	}
 
 	// compile regexes for allowed requests
-	AllowedRequests = make(map[string]*regexp.Regexp)
+	cfg.AllowedRequests = make(map[string]*regexp.Regexp)
 	for _, rx := range mr {
 		if rx.regexString != "" {
 			r, err := regexp.Compile("^" + rx.regexString + "$")
 			if err != nil {
 				return nil, fmt.Errorf("invalid regex \"%s\" for method %s: %s", rx.regexString, rx.method, err)
 			}
-			AllowedRequests[rx.method] = r
+			cfg.AllowedRequests[rx.method] = r
 		}
 	}
 	return &cfg, nil
