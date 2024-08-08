@@ -7,19 +7,19 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"os"
 	"regexp"
+	"strconv"
 	"strings"
 )
 
-const LogSourcePosition = false // set to true to log the source position (file and line) of the log message
-
-const (
+var (
 	defaultAllowFrom         = "127.0.0.1/32"         // allowed IPs to connect to the proxy
 	defaultAllowHealthcheck  = false                  // allow health check requests (HEAD http://localhost:55555/health)
 	defaultLogJSON           = false                  // if true, log in JSON format
 	defaultLogLevel          = "INFO"                 // log level as string
 	defaultListenIP          = "127.0.0.1"            // ip address to bind the server to
-	defaultProxyPort         = 2375                   // tcp port to listen on
+	defaultProxyPort         = uint(2375)             // tcp port to listen on
 	defaultSocketPath        = "/var/run/docker.sock" // path to the unix socket
 	defaultShutdownGraceTime = uint(10)               // Maximum time in seconds to wait for the server to shut down gracefully
 	defaultWatchdogInterval  = uint(0)                // watchdog interval in seconds (0 to disable)
@@ -27,6 +27,7 @@ const (
 )
 
 type Config struct {
+	AllowedRequests   map[string]*regexp.Regexp
 	AllowFrom         string
 	AllowHealthcheck  bool
 	LogJSON           bool
@@ -38,19 +39,17 @@ type Config struct {
 	SocketPath        string
 }
 
-var (
-	AllowedRequests map[string]*regexp.Regexp
-)
-
 // used for list of allowed requests
 type methodRegex struct {
-	method      string
-	regexString string
+	method               string
+	regexStringFromEnv   string
+	regexStringFromParam string
 }
 
 // mr is the allowlist of requests per http method
-// default: regegString is empty, so regexCompiled stays nil and the request is blocked
-// if regexString is set with a command line parameter, all requests matching the method and path matching the regex are allowed
+// default: regexStringFromEnv and regexStringFromParam are empty, so regexCompiled stays nil and the request is blocked
+// if regexStringParam is set with a command line parameter, all requests matching the method and path matching the regex are allowed
+// else if regexStringEnv from Environment ist checked
 var mr = []methodRegex{
 	{method: http.MethodGet},
 	{method: http.MethodHead},
@@ -70,6 +69,55 @@ func InitConfig() (*Config, error) {
 		proxyPort uint
 		logLevel  string
 	)
+
+	if val, ok := os.LookupEnv("SP_ALLOWFROM"); ok && val != "" {
+		defaultAllowFrom = val
+	}
+	if val, ok := os.LookupEnv("SP_ALLOWHEALTHCHECK"); ok {
+		if parsedVal, err := strconv.ParseBool(val); err == nil {
+			defaultAllowHealthcheck = parsedVal
+		}
+	}
+	if val, ok := os.LookupEnv("SP_LOGJSON"); ok {
+		if parsedVal, err := strconv.ParseBool(val); err == nil {
+			defaultLogJSON = parsedVal
+		}
+	}
+	if val, ok := os.LookupEnv("SP_LISTENIP"); ok && val != "" {
+		defaultListenIP = val
+	}
+	if val, ok := os.LookupEnv("SP_LOGLEVEL"); ok && val != "" {
+		defaultLogLevel = val
+	}
+	if val, ok := os.LookupEnv("SP_PROXYPORT"); ok && val != "" {
+		if parsedVal, err := strconv.ParseUint(val, 10, 32); err == nil {
+			defaultProxyPort = uint(parsedVal)
+		}
+	}
+	if val, ok := os.LookupEnv("SP_SHUTDOWNGRACETIME"); ok && val != "" {
+		if parsedVal, err := strconv.ParseUint(val, 10, 32); err == nil {
+			defaultShutdownGraceTime = uint(parsedVal)
+		}
+	}
+	if val, ok := os.LookupEnv("SP_SOCKETPATH"); ok && val != "" {
+		defaultSocketPath = val
+	}
+	if val, ok := os.LookupEnv("SP_STOPONWATCHDOG"); ok {
+		if parsedVal, err := strconv.ParseBool(val); err == nil {
+			defaultStopOnWatchdog = parsedVal
+		}
+	}
+	if val, ok := os.LookupEnv("SP_WATCHDOGINTERVAL"); ok && val != "" {
+		if parsedVal, err := strconv.ParseUint(val, 10, 32); err == nil {
+			defaultWatchdogInterval = uint(parsedVal)
+		}
+	}
+	for i := 0; i < len(mr); i++ {
+		if val, ok := os.LookupEnv("SP_ALLOW_" + mr[i].method); ok && val != "" {
+			mr[i].regexStringFromEnv = val
+		}
+	}
+
 	flag.StringVar(&cfg.AllowFrom, "allowfrom", defaultAllowFrom, "allowed IPs or hostname to connect to the proxy")
 	flag.BoolVar(&cfg.AllowHealthcheck, "allowhealthcheck", defaultAllowHealthcheck, "allow health check requests (HEAD http://localhost:55555/health)")
 	flag.BoolVar(&cfg.LogJSON, "logjson", defaultLogJSON, "log in JSON format (otherwise log in plain text")
@@ -81,11 +129,11 @@ func InitConfig() (*Config, error) {
 	flag.BoolVar(&cfg.StopOnWatchdog, "stoponwatchdog", defaultStopOnWatchdog, "stop the program when the socket gets unavailable (otherwise log only)")
 	flag.UintVar(&cfg.WatchdogInterval, "watchdoginterval", defaultWatchdogInterval, "watchdog interval in seconds (0 to disable)")
 	for i := 0; i < len(mr); i++ {
-		flag.StringVar(&mr[i].regexString, "allow"+mr[i].method, mr[i].regexString, "regex for "+mr[i].method+" requests (not set means method is not allowed)")
+		flag.StringVar(&mr[i].regexStringFromParam, "allow"+mr[i].method, "", "regex for "+mr[i].method+" requests (not set means method is not allowed)")
 	}
 	flag.Parse()
 
-	// pcheck listenIP and proxyPort
+	// check listenIP and proxyPort
 	if net.ParseIP(listenIP) == nil {
 		return nil, fmt.Errorf("invalid IP \"%s\" for listenip", listenIP)
 	}
@@ -109,14 +157,20 @@ func InitConfig() (*Config, error) {
 	}
 
 	// compile regexes for allowed requests
-	AllowedRequests = make(map[string]*regexp.Regexp)
+	cfg.AllowedRequests = make(map[string]*regexp.Regexp)
 	for _, rx := range mr {
-		if rx.regexString != "" {
-			r, err := regexp.Compile("^" + rx.regexString + "$")
+		if rx.regexStringFromParam != "" {
+			r, err := regexp.Compile("^" + rx.regexStringFromParam + "$")
 			if err != nil {
-				return nil, fmt.Errorf("invalid regex \"%s\" for method %s: %s", rx.regexString, rx.method, err)
+				return nil, fmt.Errorf("invalid regex \"%s\" for method %s in command line parameter: %s", rx.regexStringFromParam, rx.method, err)
 			}
-			AllowedRequests[rx.method] = r
+			cfg.AllowedRequests[rx.method] = r
+		} else if rx.regexStringFromEnv != "" {
+			r, err := regexp.Compile("^" + rx.regexStringFromEnv + "$")
+			if err != nil {
+				return nil, fmt.Errorf("invalid regex \"%s\" for method %s in env variable: %s", rx.regexStringFromParam, rx.method, err)
+			}
+			cfg.AllowedRequests[rx.method] = r
 		}
 	}
 	return &cfg, nil

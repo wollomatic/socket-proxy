@@ -2,7 +2,6 @@ package main
 
 import (
 	"errors"
-	"github.com/wollomatic/socket-proxy/internal/config"
 	"log/slog"
 	"net"
 	"net/http"
@@ -25,7 +24,7 @@ func handleHttpRequest(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// check if the request is allowed
-	allowed, exists := config.AllowedRequests[r.Method]
+	allowed, exists := cfg.AllowedRequests[r.Method]
 	if !exists { // method not in map -> not allowed
 		communicateBlockedRequest(w, r, "method not allowed", http.StatusMethodNotAllowed)
 		return
