@@ -62,7 +62,7 @@ If both commandline parameter and environment variable is configured for a parti
 
 Use Go's regexp syntax to create the patterns for these parameters. To avoid insecure configurations, the characters ^ at the beginning and $ at the end of the string are automatically added. Note: invalid regexp results in program termination.
 
-Examples (commandline):
+Examples (command line):
 + `'-allowGET=/v1\..{1,2}/(version|containers/.*|events.*)'` could be used for allowing access to the docker socket for Traefik v2.
 + `'-allowHEAD=.*` allows all HEAD requests.
 
@@ -78,7 +78,7 @@ To determine which HTTP requests your client application uses, you could switch 
 
 ### Container health check
 
-Health checks are disabled by default. As the socket-proxy container may not be exposed to a public network, a separate health check binary is included in the container image. To activate the health check, the `-allowhealthcheck` parameter must be set. Then, a health check is possible for example with the following docker-compose snippet:
+Health checks are disabled by default. As the socket-proxy container may not be exposed to a public network, a separate health check binary is included in the container image. To activate the health check, the `-allowhealthcheck` parameter or the environment variable `SP_ALLOWHEALTHCHECK=true` must be set. Then, a health check is possible for example with the following docker-compose snippet:
 
 ``` compose.yaml
 # [...]
@@ -91,7 +91,7 @@ Health checks are disabled by default. As the socket-proxy container may not be 
 ```
 ### Socket watchdog
 
-In certain circumstances (for example, after a Docker engine update), the socket connection may break, causing the client application to fail. To prevent this, the socket-proxy can be configured to check the socket availability at regular intervals. If the socket is not available, the socket-proxy will be stopped so the container orchestrator can restart it. This feature is disabled by default. To enable it, set the `-watchdoginterval` parameter to the desired interval in seconds and set the `-stoponwatchdog` parameter. If `-stoponwatchdog`is not set, the watchdog will only log an error message and continue to run (the problem would still exist in that case).
+In certain circumstances (for example, after a Docker engine update), the socket connection may break, causing the client application to fail. To prevent this, the socket-proxy can be configured to check the socket availability at regular intervals. If the socket is not available, the socket-proxy will be stopped so the container orchestrator can restart it. This feature is disabled by default. To enable it, set the `-watchdoginterval` parameter (or `SP_WATCHDOGINTERVAL` env variable) to the desired interval in seconds and set the `-stoponwatchdog` parameter (or `SP_STOPONWATCHDOG=true`). If `-stoponwatchdog`is not set, the watchdog will only log an error message and continue to run (the problem would still exist in that case).
 
 ### Example for proxying the docker socket to Traefik
 
@@ -160,6 +160,8 @@ To log the API calls of the client application, set the log level to `DEBUG` and
 
 ### all parameters and environment variables
 
+socket-proxy can be configured via command line parameters or via environment variables. If both command line parameter and environment variables are set, the environment variable will be ignored.
+
 | Parameter            | Environment Variable    | Default Value          | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
 |----------------------|-------------------------|------------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | `-allowfrom`         | `SP_ALLOWFROM`          | `127.0.0.1/32`         | Specifies the IP addresses of the clients or the hostname of one specific client allowed to connect to the proxy. The default value is `127.0.0.1/32`, which means only localhost is allowed. This default configuration may not be useful in most cases, but it is because of a secure-by-default design. To allow all IPv4 addresses, set `-allowfrom=0.0.0.0/0`. Alternatively, hostnames (comma-separated) can be set, for example `-allowfrom=traefik`, or `-allowfrom=traefik,dozzle`. Please remember that socket-proxy should never be exposed to a public network, regardless of this extra security layer. |
@@ -172,8 +174,6 @@ To log the API calls of the client application, set the log level to `DEBUG` and
 | `-socketpath`        | `SP_SOCKETPATH`         | `/var/run/docker.sock` | Specifies the UNIX socket path to connect to. By default, it connects to the Docker daemon socket.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
 | `-stoponwatchdog`    | `SP_STOPONWATCHDOG`     | (not set)              | If set, socket-proxy will be stopped if the watchdog detects that the unix socket is not available.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
 | `-watchdoginterval`  | `SP_WATCHDOGINTERVAL`   | `0`                    | Check for socket availabibity every x seconds (disable checks, if not set or value is 0)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
-
-If both commandline parameter and environment variables are set, the environment variable will be ignored. 
 
 ### Changelog
 
