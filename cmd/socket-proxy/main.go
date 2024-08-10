@@ -18,7 +18,8 @@ import (
 )
 
 const (
-	programUrl = "github.com/wollomatic/socket-proxy"
+	programUrl   = "github.com/wollomatic/socket-proxy"
+	logAddSource = false // set to true to log the source position (file and line) of the log message
 )
 
 var (
@@ -37,7 +38,7 @@ func main() {
 
 	// setup logging
 	logOpts := &slog.HandlerOptions{
-		AddSource: config.LogSourcePosition,
+		AddSource: logAddSource,
 		Level:     cfg.LogLevel,
 	}
 	var logger *slog.Logger
@@ -59,14 +60,14 @@ func main() {
 
 	// print request allow list
 	if cfg.LogJSON {
-		for method, regex := range config.AllowedRequests {
+		for method, regex := range cfg.AllowedRequests {
 			slog.Info("configured allowed request", "method", method, "regex", regex)
 		}
 	} else {
 		// don't use slog here, as we want to print the regexes as they are
 		// see https://github.com/wollomatic/socket-proxy/issues/11
 		fmt.Printf("Request allowlist:\n   %-8s %s\n", "Method", "Regex")
-		for method, regex := range config.AllowedRequests {
+		for method, regex := range cfg.AllowedRequests {
 			fmt.Printf("   %-8s %s\n", method, regex)
 		}
 	}
