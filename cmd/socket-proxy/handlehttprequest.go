@@ -13,14 +13,15 @@ import (
 // In case of an error, it returns a 500 Internal Server Error.
 func handleHttpRequest(w http.ResponseWriter, r *http.Request) {
 
-	// check if the client's IP is allowed to access
-	allowedIP, err := isAllowedClient(r.RemoteAddr)
-	if err != nil {
-		slog.Warn("cannot get valid IP address for client allowlist check", "reason", err, "method", r.Method, "URL", r.URL, "client", r.RemoteAddr)
-	}
-	if !allowedIP {
-		communicateBlockedRequest(w, r, "forbidden IP", http.StatusForbidden)
-		return
+	if cfg.ProxySocketEndpoint == "" { // do not perform this check if we proxy to a unix socket
+		allowedIP, err := isAllowedClient(r.RemoteAddr)
+		if err != nil {
+			slog.Warn("cannot get valid IP address for client allowlist check", "reason", err, "method", r.Method, "URL", r.URL, "client", r.RemoteAddr)
+		}
+		if !allowedIP {
+			communicateBlockedRequest(w, r, "forbidden IP", http.StatusForbidden)
+			return
+		}
 	}
 
 	// check if the request is allowed

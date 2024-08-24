@@ -19,7 +19,7 @@ import (
 
 const (
 	programUrl   = "github.com/wollomatic/socket-proxy"
-	logAddSource = false // set to true to log the source position (file and line) of the log message
+	logAddSource = true // set to true to log the source position (file and line) of the log message
 )
 
 var (
@@ -51,7 +51,12 @@ func main() {
 
 	// print configuration
 	slog.Info("starting socket-proxy", "version", version, "os", runtime.GOOS, "arch", runtime.GOARCH, "runtime", runtime.Version(), "URL", programUrl)
-	slog.Info("configuration info", "socketpath", cfg.SocketPath, "listenaddress", cfg.ListenAddress, "loglevel", cfg.LogLevel, "logjson", cfg.LogJSON, "allowfrom", cfg.AllowFrom, "shutdowngracetime", cfg.ShutdownGraceTime)
+	if cfg.ProxySocketEndpoint == "" {
+		slog.Info("configuration info", "socketpath", cfg.SocketPath, "listenaddress", cfg.ListenAddress, "loglevel", cfg.LogLevel, "logjson", cfg.LogJSON, "allowfrom", cfg.AllowFrom, "shutdowngracetime", cfg.ShutdownGraceTime)
+	} else {
+		slog.Info("configuration info", "socketpath", cfg.SocketPath, "proxysocketendpoint", cfg.ProxySocketEndpoint, "loglevel", cfg.LogLevel, "logjson", cfg.LogJSON, "allowfrom", cfg.AllowFrom, "shutdowngracetime", cfg.ShutdownGraceTime)
+		slog.Info("proxysocketendpoint is set, so the TCP listener is deactivated")
+	}
 	if cfg.WatchdogInterval > 0 {
 		slog.Info("watchdog enabled", "interval", cfg.WatchdogInterval, "stoponwatchdog", cfg.StopOnWatchdog)
 	} else {
@@ -88,13 +93,24 @@ func main() {
 		},
 	}
 
-	// start the server in a goroutine
-	srv := &http.Server{ // #nosec G112 -- intentionally do not timeout the client
-		Addr:    cfg.ListenAddress,                   // #nosec G112
+	var l net.Listener
+	if cfg.ProxySocketEndpoint != "" {
+		l, err = net.Listen("unix", cfg.ProxySocketEndpoint)
+	} else {
+		l, err = net.Listen("tcp", cfg.ListenAddress)
+	}
+	if err != nil {
+		slog.Error("error listening on address", "error", err)
+		os.Exit(2)
+	}
+
+	srv := &http.Server{ // #nosec G112 -- intentionally do not time out the client
 		Handler: http.HandlerFunc(handleHttpRequest), // #nosec G112
 	} // #nosec G112
+
+	// start the server in a goroutine
 	go func() {
-		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+		if err := srv.Serve(l); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			slog.Error("http server problem", "error", err)
 			os.Exit(2)
 		}
