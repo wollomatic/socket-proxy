@@ -149,9 +149,11 @@ func main() {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(cfg.ShutdownGraceTime)*time.Second)
 	defer cancel()
 	if err := srv.Shutdown(ctx); err != nil {
-		slog.Warn("timeout stopping server (maybe client still running?) - forcing shutdown", "error", err)
-		os.Exit(0) // timeout is no error, so we exit with 0
+		slog.Warn("timeout stopping server", "error", err)
 	}
-	slog.Info("graceful shutdown complete - exiting", "exit code", exitCode)
+	if err := l.Close(); err != nil {
+		slog.Warn("error closing listener", "error", err)
+	}
+	slog.Info("shutdown finished - exiting", "exit code", exitCode)
 	os.Exit(exitCode)
 }
