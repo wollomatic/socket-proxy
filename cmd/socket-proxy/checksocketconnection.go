@@ -5,7 +5,6 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
-	"os"
 	"time"
 )
 
@@ -26,7 +25,7 @@ func checkSocketAvailability(socketPath string) error {
 }
 
 // startSocketWatchdog starts a watchdog that checks the socket availability every n seconds.
-func startSocketWatchdog(socketPath string, interval uint, stopOnWatchdog bool) {
+func startSocketWatchdog(socketPath string, interval uint, stopOnWatchdog bool, exitChan chan int) {
 	ticker := time.NewTicker(time.Duration(interval) * time.Second)
 	defer ticker.Stop()
 
@@ -35,7 +34,7 @@ func startSocketWatchdog(socketPath string, interval uint, stopOnWatchdog bool) 
 			slog.Error("socket is unavailable", "origin", "watchdog", "error", err)
 			if stopOnWatchdog {
 				slog.Warn("stopping socket-proxy because of unavailable socket", "origin", "watchdog")
-				os.Exit(10)
+				exitChan <- 10
 			}
 		}
 	}

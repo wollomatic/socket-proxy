@@ -36,6 +36,11 @@ func main() {
 		os.Exit(1)
 	}
 
+	// setup channels for graceful shutdown
+	internalQuit := make(chan int, 1)       // send to this channel to invoke graceful shutdown, int is the exit code
+	externalQuit := make(chan os.Signal, 1) // configure listener for SIGINT and SIGTERM
+	signal.Notify(externalQuit, syscall.SIGINT, syscall.SIGTERM)
+
 	// setup logging
 	logOpts := &slog.HandlerOptions{
 		AddSource: logAddSource,
@@ -116,28 +121,37 @@ func main() {
 		}
 	}()
 
+	slog.Info("socket-proxy running and listening...")
+
 	// start the watchdog if configured
 	if cfg.WatchdogInterval > 0 {
-		go startSocketWatchdog(cfg.SocketPath, cfg.WatchdogInterval, cfg.StopOnWatchdog)
+		go startSocketWatchdog(cfg.SocketPath, cfg.WatchdogInterval, cfg.StopOnWatchdog, internalQuit)
+		slog.Debug("watchdog running")
 	}
 
 	// start the health check server if configured
 	if cfg.AllowHealthcheck {
 		go healthCheckServer(cfg.SocketPath)
+		slog.Debug("healthcheck ready")
+
 	}
 
 	// Wait for stop signal
-	quit := make(chan os.Signal, 1)
-	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
-	<-quit
-
+	exitCode := 0
+	select {
+	case <-externalQuit:
+		slog.Info("received stop signal - shutting down")
+	case value := <-internalQuit:
+		slog.Info("received internal shutdown - shutting down")
+		exitCode = value
+	}
 	// Try to shut down gracefully
-	slog.Info("received stop signal - shutting down")
 	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(cfg.ShutdownGraceTime)*time.Second)
 	defer cancel()
 	if err := srv.Shutdown(ctx); err != nil {
 		slog.Warn("timeout stopping server (maybe client still running?) - forcing shutdown", "error", err)
 		os.Exit(0) // timeout is no error, so we exit with 0
 	}
-	slog.Info("graceful shutdown complete - exiting")
+	slog.Info("graceful shutdown complete - exiting", "exit code", exitCode)
+	os.Exit(exitCode)
 }
