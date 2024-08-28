@@ -151,9 +151,6 @@ func main() {
 	if err := srv.Shutdown(ctx); err != nil {
 		slog.Warn("timeout stopping server", "error", err)
 	}
-	if err := l.Close(); err != nil {
-		slog.Warn("error closing listener", "error", err)
-	}
 	slog.Info("shutdown finished - exiting", "exit code", exitCode)
 	os.Exit(exitCode)
 }
