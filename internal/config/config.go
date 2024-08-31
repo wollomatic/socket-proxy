@@ -14,31 +14,33 @@ import (
 )
 
 var (
-	defaultAllowFrom           = "127.0.0.1/32"         // allowed IPs to connect to the proxy
-	defaultAllowHealthcheck    = false                  // allow health check requests (HEAD http://localhost:55555/health)
-	defaultLogJSON             = false                  // if true, log in JSON format
-	defaultLogLevel            = "INFO"                 // log level as string
-	defaultListenIP            = "127.0.0.1"            // ip address to bind the server to
-	defaultProxyPort           = uint(2375)             // tcp port to listen on
-	defaultSocketPath          = "/var/run/docker.sock" // path to the unix socket
-	defaultShutdownGraceTime   = uint(10)               // Maximum time in seconds to wait for the server to shut down gracefully
-	defaultWatchdogInterval    = uint(0)                // watchdog interval in seconds (0 to disable)
-	defaultStopOnWatchdog      = false                  // set to true to stop the program when the socket gets unavailable (otherwise log only)
-	defaultProxySocketEndpoint = ""                     // empty string means no socket listener, but regular TCP listener
+	defaultAllowFrom                     = "127.0.0.1/32"         // allowed IPs to connect to the proxy
+	defaultAllowHealthcheck              = false                  // allow health check requests (HEAD http://localhost:55555/health)
+	defaultLogJSON                       = false                  // if true, log in JSON format
+	defaultLogLevel                      = "INFO"                 // log level as string
+	defaultListenIP                      = "127.0.0.1"            // ip address to bind the server to
+	defaultProxyPort                     = uint(2375)             // tcp port to listen on
+	defaultSocketPath                    = "/var/run/docker.sock" // path to the unix socket
+	defaultShutdownGraceTime             = uint(10)               // Maximum time in seconds to wait for the server to shut down gracefully
+	defaultWatchdogInterval              = uint(0)                // watchdog interval in seconds (0 to disable)
+	defaultStopOnWatchdog                = false                  // set to true to stop the program when the socket gets unavailable (otherwise log only)
+	defaultProxySocketEndpoint           = ""                     // empty string means no socket listener, but regular TCP listener
+	defaultProxySocketEndpointAllowGroup = false                  // if true, set socket file mode to 660 instead if 600
 )
 
 type Config struct {
-	AllowedRequests     map[string]*regexp.Regexp
-	AllowFrom           string
-	AllowHealthcheck    bool
-	LogJSON             bool
-	StopOnWatchdog      bool
-	ShutdownGraceTime   uint
-	WatchdogInterval    uint
-	LogLevel            slog.Level
-	ListenAddress       string
-	SocketPath          string
-	ProxySocketEndpoint string
+	AllowedRequests               map[string]*regexp.Regexp
+	AllowFrom                     string
+	AllowHealthcheck              bool
+	LogJSON                       bool
+	StopOnWatchdog                bool
+	ShutdownGraceTime             uint
+	WatchdogInterval              uint
+	LogLevel                      slog.Level
+	ListenAddress                 string
+	SocketPath                    string
+	ProxySocketEndpoint           string
+	ProxySocketEndpointAllowGroup bool
 }
 
 // used for list of allowed requests
@@ -117,6 +119,11 @@ func InitConfig() (*Config, error) {
 	if val, ok := os.LookupEnv("SP_PROXYSOCKETENDPOINT"); ok && val != "" {
 		defaultProxySocketEndpoint = val
 	}
+	if val, ok := os.LookupEnv("SP_PROXYSOCKETENDPOINTALLOWGROUP"); ok {
+		if parsedVal, err := strconv.ParseBool(val); err == nil {
+			defaultProxySocketEndpointAllowGroup = parsedVal
+		}
+	}
 
 	for i := 0; i < len(mr); i++ {
 		if val, ok := os.LookupEnv("SP_ALLOW_" + mr[i].method); ok && val != "" {
@@ -135,6 +142,7 @@ func InitConfig() (*Config, error) {
 	flag.BoolVar(&cfg.StopOnWatchdog, "stoponwatchdog", defaultStopOnWatchdog, "stop the program when the socket gets unavailable (otherwise log only)")
 	flag.UintVar(&cfg.WatchdogInterval, "watchdoginterval", defaultWatchdogInterval, "watchdog interval in seconds (0 to disable)")
 	flag.StringVar(&cfg.ProxySocketEndpoint, "proxysocketendpoint", defaultProxySocketEndpoint, "unix socket endpoint (if set, used instead of the TCP listener)")
+	flag.BoolVar(&cfg.ProxySocketEndpointAllowGroup, "proxysocketendpointallowgroup", defaultProxySocketEndpointAllowGroup, "allow group access to the filtered unix socket endpoint")
 	for i := 0; i < len(mr); i++ {
 		flag.StringVar(&mr[i].regexStringFromParam, "allow"+mr[i].method, "", "regex for "+mr[i].method+" requests (not set means method is not allowed)")
 	}

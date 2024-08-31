@@ -112,7 +112,11 @@ func main() {
 			slog.Error("error creating socket", "error", err)
 			os.Exit(2)
 		}
-		if err = os.Chmod(cfg.ProxySocketEndpoint, 0660); err != nil {
+		var mode os.FileMode = 0600
+		if cfg.ProxySocketEndpointAllowGroup {
+			mode = 0660
+		}
+		if err = os.Chmod(cfg.ProxySocketEndpoint, mode); err != nil {
 			slog.Error("error setting socket file permissions", "error", err)
 			os.Exit(2)
 		}
