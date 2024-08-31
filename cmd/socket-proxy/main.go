@@ -61,6 +61,9 @@ func main() {
 	} else {
 		slog.Info("configuration info", "socketpath", cfg.SocketPath, "proxysocketendpoint", cfg.ProxySocketEndpoint, "loglevel", cfg.LogLevel, "logjson", cfg.LogJSON, "allowfrom", cfg.AllowFrom, "shutdowngracetime", cfg.ShutdownGraceTime)
 		slog.Info("proxysocketendpoint is set, so the TCP listener is deactivated")
+		if cfg.ProxySocketEndpointAllowGroup {
+			slog.Warn("Group access is enabled for the proxy socket endpoint")
+		}
 	}
 	if cfg.WatchdogInterval > 0 {
 		slog.Info("watchdog enabled", "interval", cfg.WatchdogInterval, "stoponwatchdog", cfg.StopOnWatchdog)
