@@ -59,11 +59,8 @@ func main() {
 	if cfg.ProxySocketEndpoint == "" {
 		slog.Info("configuration info", "socketpath", cfg.SocketPath, "listenaddress", cfg.ListenAddress, "loglevel", cfg.LogLevel, "logjson", cfg.LogJSON, "allowfrom", cfg.AllowFrom, "shutdowngracetime", cfg.ShutdownGraceTime)
 	} else {
-		slog.Info("configuration info", "socketpath", cfg.SocketPath, "proxysocketendpoint", cfg.ProxySocketEndpoint, "loglevel", cfg.LogLevel, "logjson", cfg.LogJSON, "allowfrom", cfg.AllowFrom, "shutdowngracetime", cfg.ShutdownGraceTime)
+		slog.Info("configuration info", "socketpath", cfg.SocketPath, "proxysocketendpoint", cfg.ProxySocketEndpoint, "proxysocketendpointfilemode", cfg.ProxySocketEndpointFileMode, "loglevel", cfg.LogLevel, "logjson", cfg.LogJSON, "allowfrom", cfg.AllowFrom, "shutdowngracetime", cfg.ShutdownGraceTime)
 		slog.Info("proxysocketendpoint is set, so the TCP listener is deactivated")
-		if cfg.ProxySocketEndpointAllowGroup {
-			slog.Warn("Group access is enabled for the proxy socket endpoint")
-		}
 	}
 	if cfg.WatchdogInterval > 0 {
 		slog.Info("watchdog enabled", "interval", cfg.WatchdogInterval, "stoponwatchdog", cfg.StopOnWatchdog)
@@ -115,11 +112,7 @@ func main() {
 			slog.Error("error creating socket", "error", err)
 			os.Exit(2)
 		}
-		var mode os.FileMode = 0600
-		if cfg.ProxySocketEndpointAllowGroup {
-			mode = 0660
-		}
-		if err = os.Chmod(cfg.ProxySocketEndpoint, mode); err != nil {
+		if err = os.Chmod(cfg.ProxySocketEndpoint, cfg.ProxySocketEndpointFileMode); err != nil {
 			slog.Error("error setting socket file permissions", "error", err)
 			os.Exit(2)
 		}
