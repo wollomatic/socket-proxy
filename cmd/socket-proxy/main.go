@@ -100,13 +100,28 @@ func main() {
 
 	var l net.Listener
 	if cfg.ProxySocketEndpoint != "" {
+		if _, err := os.Stat(cfg.ProxySocketEndpoint); err == nil {
+			slog.Warn(fmt.Sprintf("%s already exists, removing existing file", cfg.ProxySocketEndpoint))
+			if err = os.Remove(cfg.ProxySocketEndpoint); err != nil {
+				slog.Error("error removing existing socket file", "error", err)
+				os.Exit(2)
+			}
+		}
 		l, err = net.Listen("unix", cfg.ProxySocketEndpoint)
+		if err != nil {
+			slog.Error("error creating socket", "error", err)
+			os.Exit(2)
+		}
+		if err = os.Chmod(cfg.ProxySocketEndpoint, 0660); err != nil {
+			slog.Error("error setting socket file permissions", "error", err)
+			os.Exit(2)
+		}
 	} else {
 		l, err = net.Listen("tcp", cfg.ListenAddress)
-	}
-	if err != nil {
-		slog.Error("error listening on address", "error", err)
-		os.Exit(2)
+		if err != nil {
+			slog.Error("error listening on address", "error", err)
+			os.Exit(2)
+		}
 	}
 
 	srv := &http.Server{ // #nosec G112 -- intentionally do not time out the client
