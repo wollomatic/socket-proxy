@@ -44,6 +44,9 @@ Socket-proxy listens per default only on `127.0.0.1`. Depending on what you need
 
 #### Using a unix socket instead of a TCP listener
 
+> [!CAUTION]
+> This is a new feature introduced in version 1.5.0. If you experience any issues, please feel free to open an GitHub issue.
+
 If you want to proxy/filter the unix socket to a new unix socket instead to a TCP listener,
 you need to set the `-proxysocketendpoint` parameter or the `SP_PROXYSOCKETENDPOIN` env variable to the socket path of the new unix socket.
 This will also disable the TCP listener.
