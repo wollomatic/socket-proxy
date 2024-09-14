@@ -19,7 +19,7 @@ import (
 
 const (
 	programUrl   = "github.com/wollomatic/socket-proxy"
-	logAddSource = true // set to true to log the source position (file and line) of the log message
+	logAddSource = false // set to true to log the source position (file and line) of the log message
 )
 
 var (
