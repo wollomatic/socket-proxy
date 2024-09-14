@@ -36,6 +36,11 @@ func main() {
 		os.Exit(1)
 	}
 
+	// setup channels for graceful shutdown
+	internalQuit := make(chan int, 1)       // send to this channel to invoke graceful shutdown, int is the exit code
+	externalQuit := make(chan os.Signal, 1) // configure listener for SIGINT and SIGTERM
+	signal.Notify(externalQuit, syscall.SIGINT, syscall.SIGTERM)
+
 	// setup logging
 	logOpts := &slog.HandlerOptions{
 		AddSource: logAddSource,
@@ -51,7 +56,12 @@ func main() {
 
 	// print configuration
 	slog.Info("starting socket-proxy", "version", version, "os", runtime.GOOS, "arch", runtime.GOARCH, "runtime", runtime.Version(), "URL", programUrl)
-	slog.Info("configuration info", "socketpath", cfg.SocketPath, "listenaddress", cfg.ListenAddress, "loglevel", cfg.LogLevel, "logjson", cfg.LogJSON, "allowfrom", cfg.AllowFrom, "shutdowngracetime", cfg.ShutdownGraceTime)
+	if cfg.ProxySocketEndpoint == "" {
+		slog.Info("configuration info", "socketpath", cfg.SocketPath, "listenaddress", cfg.ListenAddress, "loglevel", cfg.LogLevel, "logjson", cfg.LogJSON, "allowfrom", cfg.AllowFrom, "shutdowngracetime", cfg.ShutdownGraceTime)
+	} else {
+		slog.Info("configuration info", "socketpath", cfg.SocketPath, "proxysocketendpoint", cfg.ProxySocketEndpoint, "proxysocketendpointfilemode", cfg.ProxySocketEndpointFileMode, "loglevel", cfg.LogLevel, "logjson", cfg.LogJSON, "allowfrom", cfg.AllowFrom, "shutdowngracetime", cfg.ShutdownGraceTime)
+		slog.Info("proxysocketendpoint is set, so the TCP listener is deactivated")
+	}
 	if cfg.WatchdogInterval > 0 {
 		slog.Info("watchdog enabled", "interval", cfg.WatchdogInterval, "stoponwatchdog", cfg.StopOnWatchdog)
 	} else {
@@ -88,40 +98,74 @@ func main() {
 		},
 	}
 
-	// start the server in a goroutine
-	srv := &http.Server{ // #nosec G112 -- intentionally do not timeout the client
-		Addr:    cfg.ListenAddress,                   // #nosec G112
+	var l net.Listener
+	if cfg.ProxySocketEndpoint != "" {
+		if _, err := os.Stat(cfg.ProxySocketEndpoint); err == nil {
+			slog.Warn(fmt.Sprintf("%s already exists, removing existing file", cfg.ProxySocketEndpoint))
+			if err = os.Remove(cfg.ProxySocketEndpoint); err != nil {
+				slog.Error("error removing existing socket file", "error", err)
+				os.Exit(2)
+			}
+		}
+		l, err = net.Listen("unix", cfg.ProxySocketEndpoint)
+		if err != nil {
+			slog.Error("error creating socket", "error", err)
+			os.Exit(2)
+		}
+		if err = os.Chmod(cfg.ProxySocketEndpoint, cfg.ProxySocketEndpointFileMode); err != nil {
+			slog.Error("error setting socket file permissions", "error", err)
+			os.Exit(2)
+		}
+	} else {
+		l, err = net.Listen("tcp", cfg.ListenAddress)
+		if err != nil {
+			slog.Error("error listening on address", "error", err)
+			os.Exit(2)
+		}
+	}
+
+	srv := &http.Server{ // #nosec G112 -- intentionally do not time out the client
 		Handler: http.HandlerFunc(handleHttpRequest), // #nosec G112
 	} // #nosec G112
+
+	// start the server in a goroutine
 	go func() {
-		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+		if err := srv.Serve(l); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			slog.Error("http server problem", "error", err)
 			os.Exit(2)
 		}
 	}()
 
+	slog.Info("socket-proxy running and listening...")
+
 	// start the watchdog if configured
 	if cfg.WatchdogInterval > 0 {
-		go startSocketWatchdog(cfg.SocketPath, cfg.WatchdogInterval, cfg.StopOnWatchdog)
+		go startSocketWatchdog(cfg.SocketPath, cfg.WatchdogInterval, cfg.StopOnWatchdog, internalQuit)
+		slog.Debug("watchdog running")
 	}
 
 	// start the health check server if configured
 	if cfg.AllowHealthcheck {
 		go healthCheckServer(cfg.SocketPath)
+		slog.Debug("healthcheck ready")
+
 	}
 
 	// Wait for stop signal
-	quit := make(chan os.Signal, 1)
-	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
-	<-quit
-
+	exitCode := 0
+	select {
+	case <-externalQuit:
+		slog.Info("received stop signal - shutting down")
+	case value := <-internalQuit:
+		slog.Info("received internal shutdown - shutting down")
+		exitCode = value
+	}
 	// Try to shut down gracefully
-	slog.Info("received stop signal - shutting down")
 	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(cfg.ShutdownGraceTime)*time.Second)
 	defer cancel()
 	if err := srv.Shutdown(ctx); err != nil {
-		slog.Warn("timeout stopping server (maybe client still running?) - forcing shutdown", "error", err)
-		os.Exit(0) // timeout is no error, so we exit with 0
+		slog.Warn("timeout stopping server", "error", err)
 	}
-	slog.Info("graceful shutdown complete - exiting")
+	slog.Info("shutdown finished - exiting", "exit code", exitCode)
+	os.Exit(exitCode)
 }
