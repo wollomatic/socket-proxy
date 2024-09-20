@@ -120,9 +120,9 @@ func InitConfig() (*Config, error) {
 	if val, ok := os.LookupEnv("SP_PROXYSOCKETENDPOINT"); ok && val != "" {
 		defaultProxySocketEndpoint = val
 	}
-	if val, ok := os.LookupEnv("SP_PROXYSOCKETENDPOINTALLOWGROUP"); ok {
-		if parsedVal, err := strconv.ParseInt(val, 10, 32); err == nil {
-			defaultProxySocketEndpointFileMode = int(parsedVal)
+	if val, ok := os.LookupEnv("SP_PROXYSOCKETENDPOINTFILEMODE"); ok {
+		if parsedVal, err := strconv.ParseUint(val, 8, 32); err == nil {
+			defaultProxySocketEndpointFileMode = uint32(parsedVal)
 		}
 	}
 
