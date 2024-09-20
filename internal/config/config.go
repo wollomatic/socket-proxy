@@ -25,7 +25,7 @@ var (
 	defaultWatchdogInterval            = uint(0)                // watchdog interval in seconds (0 to disable)
 	defaultStopOnWatchdog              = false                  // set to true to stop the program when the socket gets unavailable (otherwise log only)
 	defaultProxySocketEndpoint         = ""                     // empty string means no socket listener, but regular TCP listener
-	defaultProxySocketEndpointFileMode = 0400                   // set the file mode of the unix socket endpoint
+	defaultProxySocketEndpointFileMode = uint(0400)             // set the file mode of the unix socket endpoint
 )
 
 type Config struct {
@@ -72,7 +72,7 @@ func InitConfig() (*Config, error) {
 		listenIP         string
 		proxyPort        uint
 		logLevel         string
-		endpointFileMode int
+		endpointFileMode uint
 	)
 
 	if val, ok := os.LookupEnv("SP_ALLOWFROM"); ok && val != "" {
@@ -122,7 +122,7 @@ func InitConfig() (*Config, error) {
 	}
 	if val, ok := os.LookupEnv("SP_PROXYSOCKETENDPOINTFILEMODE"); ok {
 		if parsedVal, err := strconv.ParseUint(val, 8, 32); err == nil {
-			defaultProxySocketEndpointFileMode = uint32(parsedVal)
+			defaultProxySocketEndpointFileMode = uint(parsedVal)
 		}
 	}
 
@@ -143,7 +143,7 @@ func InitConfig() (*Config, error) {
 	flag.BoolVar(&cfg.StopOnWatchdog, "stoponwatchdog", defaultStopOnWatchdog, "stop the program when the socket gets unavailable (otherwise log only)")
 	flag.UintVar(&cfg.WatchdogInterval, "watchdoginterval", defaultWatchdogInterval, "watchdog interval in seconds (0 to disable)")
 	flag.StringVar(&cfg.ProxySocketEndpoint, "proxysocketendpoint", defaultProxySocketEndpoint, "unix socket endpoint (if set, used instead of the TCP listener)")
-	flag.IntVar(&endpointFileMode, "proxysocketendpointfilemode", defaultProxySocketEndpointFileMode, "set the file mode of the unix socket endpoint")
+	flag.UintVar(&endpointFileMode, "proxysocketendpointfilemode", defaultProxySocketEndpointFileMode, "set the file mode of the unix socket endpoint")
 	for i := 0; i < len(mr); i++ {
 		flag.StringVar(&mr[i].regexStringFromParam, "allow"+mr[i].method, "", "regex for "+mr[i].method+" requests (not set means method is not allowed)")
 	}
