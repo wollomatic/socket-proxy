@@ -123,7 +123,7 @@ func InitConfig() (*Config, error) {
 	if val, ok := os.LookupEnv("SP_PROXYSOCKETENDPOINTFILEMODE"); ok {
 		if parsedVal, err := strconv.ParseUint(val, 8, 32); err == nil {
 			defaultProxySocketEndpointFileMode = uint32(parsedVal)
-		}		
+		}
 	}
 
 	for i := 0; i < len(mr); i++ {
