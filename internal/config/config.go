@@ -25,7 +25,7 @@ var (
 	defaultWatchdogInterval            = uint(0)                // watchdog interval in seconds (0 to disable)
 	defaultStopOnWatchdog              = false                  // set to true to stop the program when the socket gets unavailable (otherwise log only)
 	defaultProxySocketEndpoint         = ""                     // empty string means no socket listener, but regular TCP listener
-	defaultProxySocketEndpointFileMode = uint(0400)             // set the file mode of the unix socket endpoint
+	defaultProxySocketEndpointFileMode = uint(0o400)            // set the file mode of the unix socket endpoint
 )
 
 type Config struct {
@@ -180,13 +180,13 @@ func InitConfig() (*Config, error) {
 		if rx.regexStringFromParam != "" {
 			r, err := regexp.Compile("^" + rx.regexStringFromParam + "$")
 			if err != nil {
-				return nil, fmt.Errorf("invalid regex \"%s\" for method %s in command line parameter: %s", rx.regexStringFromParam, rx.method, err)
+				return nil, fmt.Errorf("invalid regex \"%s\" for method %s in command line parameter: %w", rx.regexStringFromParam, rx.method, err)
 			}
 			cfg.AllowedRequests[rx.method] = r
 		} else if rx.regexStringFromEnv != "" {
 			r, err := regexp.Compile("^" + rx.regexStringFromEnv + "$")
 			if err != nil {
-				return nil, fmt.Errorf("invalid regex \"%s\" for method %s in env variable: %s", rx.regexStringFromParam, rx.method, err)
+				return nil, fmt.Errorf("invalid regex \"%s\" for method %s in env variable: %w", rx.regexStringFromParam, rx.method, err)
 			}
 			cfg.AllowedRequests[rx.method] = r
 		}

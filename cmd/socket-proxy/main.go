@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/wollomatic/socket-proxy/internal/config"
 	"log/slog"
 	"net"
 	"net/http"
@@ -15,10 +14,12 @@ import (
 	"runtime"
 	"syscall"
 	"time"
+
+	"github.com/wollomatic/socket-proxy/internal/config"
 )
 
 const (
-	programUrl   = "github.com/wollomatic/socket-proxy"
+	programURL   = "github.com/wollomatic/socket-proxy"
 	logAddSource = false // set to true to log the source position (file and line) of the log message
 )
 
@@ -55,7 +56,7 @@ func main() {
 	slog.SetDefault(logger)
 
 	// print configuration
-	slog.Info("starting socket-proxy", "version", version, "os", runtime.GOOS, "arch", runtime.GOARCH, "runtime", runtime.Version(), "URL", programUrl)
+	slog.Info("starting socket-proxy", "version", version, "os", runtime.GOOS, "arch", runtime.GOARCH, "runtime", runtime.Version(), "URL", programURL)
 	if cfg.ProxySocketEndpoint == "" {
 		slog.Info("configuration info", "socketpath", cfg.SocketPath, "listenaddress", cfg.ListenAddress, "loglevel", cfg.LogLevel, "logjson", cfg.LogJSON, "allowfrom", cfg.AllowFrom, "shutdowngracetime", cfg.ShutdownGraceTime)
 	} else {
@@ -90,8 +91,8 @@ func main() {
 	}
 
 	// define the reverse proxy
-	socketUrlDummy, _ := url.Parse("http://localhost") // dummy URL - we use the unix socket
-	socketProxy = httputil.NewSingleHostReverseProxy(socketUrlDummy)
+	socketURLDummy, _ := url.Parse("http://localhost") // dummy URL - we use the unix socket
+	socketProxy = httputil.NewSingleHostReverseProxy(socketURLDummy)
 	socketProxy.Transport = &http.Transport{
 		DialContext: func(_ context.Context, _, _ string) (net.Conn, error) {
 			return net.Dial("unix", cfg.SocketPath)
@@ -125,7 +126,7 @@ func main() {
 	}
 
 	srv := &http.Server{ // #nosec G112 -- intentionally do not time out the client
-		Handler: http.HandlerFunc(handleHttpRequest), // #nosec G112
+		Handler: http.HandlerFunc(handleHTTPRequest), // #nosec G112
 	} // #nosec G112
 
 	// start the server in a goroutine
@@ -148,7 +149,6 @@ func main() {
 	if cfg.AllowHealthcheck {
 		go healthCheckServer(cfg.SocketPath)
 		slog.Debug("healthcheck ready")
-
 	}
 
 	// Wait for stop signal
