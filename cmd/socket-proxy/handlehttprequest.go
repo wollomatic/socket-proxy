@@ -8,11 +8,10 @@ import (
 	"strings"
 )
 
-// handleHttpRequest checks if the request is allowed and sends it to the proxy.
+// handleHTTPRequest checks if the request is allowed and sends it to the proxy.
 // Otherwise, it returns a "405 Method Not Allowed" or a "403 Forbidden" error.
 // In case of an error, it returns a 500 Internal Server Error.
-func handleHttpRequest(w http.ResponseWriter, r *http.Request) {
-
+func handleHTTPRequest(w http.ResponseWriter, r *http.Request) {
 	if cfg.ProxySocketEndpoint == "" { // do not perform this check if we proxy to a unix socket
 		allowedIP, err := isAllowedClient(r.RemoteAddr)
 		if err != nil {
