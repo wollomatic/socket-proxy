@@ -57,24 +57,24 @@ func isAllowedClient(remoteAddr string) (bool, error) {
 	if err == nil {
 		// AllowFrom is a valid CIDR, so check if IP address is in allowed network
 		return allowedIPNet.Contains(clientIP), nil
-	} else {
-		// AllowFrom is not a valid CIDR, so try to resolve it via DNS
-		// split over comma to support multiple hostnames
-		allowFroms := strings.Split(cfg.AllowFrom, ",")
-		for _, allowFrom := range allowFroms {
-			ips, err := net.LookupIP(allowFrom)
-			if err != nil {
-				slog.Warn("error looking up allowed client hostname", "hostname", allowFrom, "error", err.Error())
-			}
-			for _, ip := range ips {
-				// Check if IP address is one of the resolved IPs
-				if ip.Equal(clientIP) {
-					return true, nil
-				}
+	}
+
+	// AllowFrom is not a valid CIDR, so try to resolve it via DNS
+	// split over comma to support multiple hostnames
+	allowFromList := strings.Split(cfg.AllowFrom, ",")
+	for _, allowFrom := range allowFromList {
+		ips, err := net.LookupIP(allowFrom)
+		if err != nil {
+			slog.Warn("error looking up allowed client hostname", "hostname", allowFrom, "error", err.Error())
+		}
+		for _, ip := range ips {
+			// Check if IP address is one of the resolved IPs
+			if ip.Equal(clientIP) {
+				return true, nil
 			}
 		}
-		return false, nil
 	}
+	return false, nil
 }
 
 // sendHTTPError sends a HTTP error with the given status code.
