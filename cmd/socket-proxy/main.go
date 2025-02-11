@@ -101,7 +101,7 @@ func main() {
 
 	var l net.Listener
 	if cfg.ProxySocketEndpoint != "" {
-		if _, err := os.Stat(cfg.ProxySocketEndpoint); err == nil {
+		if _, err = os.Stat(cfg.ProxySocketEndpoint); err == nil {
 			slog.Warn(fmt.Sprintf("%s already exists, removing existing file", cfg.ProxySocketEndpoint))
 			if err = os.Remove(cfg.ProxySocketEndpoint); err != nil {
 				slog.Error("error removing existing socket file", "error", err)

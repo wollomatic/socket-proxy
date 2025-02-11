@@ -126,7 +126,7 @@ func InitConfig() (*Config, error) {
 		}
 	}
 
-	for i := 0; i < len(mr); i++ {
+	for i := range mr {
 		if val, ok := os.LookupEnv("SP_ALLOW_" + mr[i].method); ok && val != "" {
 			mr[i].regexStringFromEnv = val
 		}
@@ -144,7 +144,7 @@ func InitConfig() (*Config, error) {
 	flag.UintVar(&cfg.WatchdogInterval, "watchdoginterval", defaultWatchdogInterval, "watchdog interval in seconds (0 to disable)")
 	flag.StringVar(&cfg.ProxySocketEndpoint, "proxysocketendpoint", defaultProxySocketEndpoint, "unix socket endpoint (if set, used instead of the TCP listener)")
 	flag.UintVar(&endpointFileMode, "proxysocketendpointfilemode", defaultProxySocketEndpointFileMode, "set the file mode of the unix socket endpoint")
-	for i := 0; i < len(mr); i++ {
+	for i := range mr {
 		flag.StringVar(&mr[i].regexStringFromParam, "allow"+mr[i].method, "", "regex for "+mr[i].method+" requests (not set means method is not allowed)")
 	}
 	flag.Parse()
