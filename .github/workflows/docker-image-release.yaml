@@ -9,6 +9,8 @@ jobs:
   build:
 
     runs-on: ubuntu-latest
+    env:
+      GO111MODULE: on
 
     steps:
       - name: Checkout
@@ -16,15 +18,17 @@ jobs:
 
       - name: Run Gosec Security Scanner
         uses: securego/gosec@master
+        with:
+          args: ./...
 
       - name: Extract tag name
         id: get_tag
         run: echo "::set-output name=VERSION::${GITHUB_REF#refs/tags/}"
 
       - name: Install Cosign
-        uses: sigstore/cosign-installer@v3.1.2
+        uses: sigstore/cosign-installer@v3.8.1
         with:
-          cosign-release: 'v2.2.0'
+          cosign-release: 'v2.4.3'
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
