@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"log/slog"
+	"math"
 	"net"
 	"net/http"
 	"os"
@@ -139,9 +140,15 @@ func InitConfig() (*Config, error) {
 	flag.StringVar(&logLevel, "loglevel", defaultLogLevel, "set log level: DEBUG, INFO, WARN, ERROR")
 	flag.UintVar(&proxyPort, "proxyport", defaultProxyPort, "tcp port to listen on")
 	flag.UintVar(&cfg.ShutdownGraceTime, "shutdowngracetime", defaultShutdownGraceTime, "maximum time in seconds to wait for the server to shut down gracefully")
+	if cfg.ShutdownGraceTime > math.MaxInt64 {
+		return nil, fmt.Errorf("shutdowngracetime has to be smaller than %i", math.MaxInt64) // this maximum value has no practical significance
+	}
 	flag.StringVar(&cfg.SocketPath, "socketpath", defaultSocketPath, "unix socket path to connect to")
 	flag.BoolVar(&cfg.StopOnWatchdog, "stoponwatchdog", defaultStopOnWatchdog, "stop the program when the socket gets unavailable (otherwise log only)")
 	flag.UintVar(&cfg.WatchdogInterval, "watchdoginterval", defaultWatchdogInterval, "watchdog interval in seconds (0 to disable)")
+	if cfg.WatchdogInterval > math.MaxInt64 {
+		return nil, fmt.Errorf("watchdoginterval has to be smaller than %i", math.MaxInt64) // this maximum value has no practical significance
+	}
 	flag.StringVar(&cfg.ProxySocketEndpoint, "proxysocketendpoint", defaultProxySocketEndpoint, "unix socket endpoint (if set, used instead of the TCP listener)")
 	flag.UintVar(&endpointFileMode, "proxysocketendpointfilemode", defaultProxySocketEndpointFileMode, "set the file mode of the unix socket endpoint")
 	for i := range mr {
@@ -172,7 +179,10 @@ func InitConfig() (*Config, error) {
 		return nil, errors.New("invalid log level " + logLevel + ": Supported levels are DEBUG, INFO, WARN, ERROR")
 	}
 
-	cfg.ProxySocketEndpointFileMode = os.FileMode(endpointFileMode)
+	if endpointFileMode > 0o777 {
+		return nil, errors.New("file mode has to be between 0 and 0o777")
+	}
+	cfg.ProxySocketEndpointFileMode = os.FileMode(uint32(endpointFileMode))
 
 	// compile regexes for allowed requests
 	cfg.AllowedRequests = make(map[string]*regexp.Regexp)

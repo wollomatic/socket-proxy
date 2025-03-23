@@ -141,7 +141,7 @@ func main() {
 
 	// start the watchdog if configured
 	if cfg.WatchdogInterval > 0 {
-		go startSocketWatchdog(cfg.SocketPath, cfg.WatchdogInterval, cfg.StopOnWatchdog, internalQuit)
+		go startSocketWatchdog(cfg.SocketPath, int64(cfg.WatchdogInterval), cfg.StopOnWatchdog, internalQuit) // #nosec G115 - we validated the integer size in config.go
 		slog.Debug("watchdog running")
 	}
 
@@ -161,7 +161,7 @@ func main() {
 		exitCode = value
 	}
 	// Try to shut down gracefully
-	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(cfg.ShutdownGraceTime)*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(int64(cfg.ShutdownGraceTime))*time.Second) // #nosec G115 - we validated the integer size in config.go
 	defer cancel()
 	if err := srv.Shutdown(ctx); err != nil {
 		slog.Warn("timeout stopping server", "error", err)
