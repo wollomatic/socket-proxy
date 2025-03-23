@@ -11,7 +11,10 @@ It is designed with security in mind, so there are secure defaults and an additi
 
 The allowlist is configured for each HTTP method separately using the Go regexp syntax, allowing fine-grained control over the allowed HTTP methods.
 
-The source code is available on [GitHub: wollomatic/socket-proxy](https://github.com/wollomatic/socket-proxy).
+The source code is available on [GitHub: wollomatic/socket-proxy](https://github.com/wollomatic/socket-proxy)
+
+> [!NOTE]
+> Starting with version 1.6.0, the socket-proxy container image is also available on GHCR.  
 
 ## Getting Started
 
@@ -23,14 +26,17 @@ You should know what you are doing. Never expose socket-proxy to a public networ
 
 ### Installing
 
-The container image is available on [Docker Hub: wollomatic/socket-proxy](https://hub.docker.com/r/wollomatic/socket-proxy).
+The container image is available on [Docker Hub (wollomatic/socket-proxy)](https://hub.docker.com/r/wollomatic/socket-proxy) 
+and on the [GitHub Container Registry (ghcr.io/wollomatic/socket-proxy)](https://hub.docker.com/r/wollomatic/socket-proxy).
 
-To pin one specific version, use the version tag (for example, `wollomatic/socket-proxy:1.0.1`).
-To always use the most recent version, use the `1` tag (`wollomatic/socket-proxy:1`). This tag will be valid as long as there is no breaking change in the deployment.
+
+To pin one specific version, use the version tag (for example, `wollomatic/socket-proxy:1.6.0` or `ghcr.io/wollomatic/socket-proxy:1.6.0`).
+To always use the most recent version, use the `1` tag (`wollomatic/socket-proxy:1` or `ghcr.io/wollomatic/socket-proxy:1`). This tag will be valid as long as there is no breaking change in the deployment.
 
 There may be an additional docker image with the `testing`-tag. This image is only for testing. Likely, documentation for the `testing` image could only be found in the GitHub commit messages. It is not recommended to use the `testing` image in production.
 
 Every socket-proxy release image is signed with Cosign. The public key is available on [GitHub: wollomatic/socket-proxy/main/cosign.pub](https://raw.githubusercontent.com/wollomatic/socket-proxy/main/cosign.pub) and [https://wollomatic.de/socket-proxy/cosign.pub](https://wollomatic.de/socket-proxy/cosign.pub). For more information, please refer to the [Security Policy](https://github.com/wollomatic/socket-proxy/blob/main/SECURITY.md).
+As of version 1.6, all multi-arch images are signed.
 
 ### Allowing access
 
@@ -43,9 +49,6 @@ This is meant to be an additional layer of security. It does not replace other s
 Socket-proxy listens per default only on `127.0.0.1`. Depending on what you need, you may want to set another listener address with the `-listenip` parameter. In almost every use case, `-listenip=0.0.0.0` will be the correct configuration when using socket-proxy in a docker image.
 
 #### Using a unix socket instead of a TCP listener
-
-> [!CAUTION]
-> This is a new feature introduced in version 1.5.0. If you experience any issues, please feel free to open an GitHub issue.
 
 If you want to proxy/filter the unix socket to a new unix socket instead to a TCP listener,
 you need to set the `-proxysocketendpoint` parameter or the `SP_PROXYSOCKETENDPOINT` env variable to the socket path of the new unix socket.
@@ -201,6 +204,8 @@ socket-proxy can be configured via command line parameters or via environment va
 1.4 - allow configuration from env variables
 
 1.5 - allow unix socket as proxied/filtered endpoint
+
+1.6 - Cosign: sign a multi-arch container image AND all referenced, discrete images. Image is also available on GHCR.
 
 ## License
 
