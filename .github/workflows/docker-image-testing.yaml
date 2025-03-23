@@ -10,6 +10,8 @@ jobs:
   build:
 
     runs-on: ubuntu-latest
+    env:
+      GO111MODULE: on
 
     steps:
       - name: Checkout
@@ -17,6 +19,8 @@ jobs:
 
       - name: Run Gosec Security Scanner
         uses: securego/gosec@master
+        with:
+          args: ./...
 
       - name: Install Cosign
         uses: sigstore/cosign-installer@v3.8.1
