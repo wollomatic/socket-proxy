@@ -27,8 +27,7 @@ You should know what you are doing. Never expose socket-proxy to a public networ
 ### Installing
 
 The container image is available on [Docker Hub (wollomatic/socket-proxy)](https://hub.docker.com/r/wollomatic/socket-proxy) 
-and on the [GitHub Container Registry (ghcr.io/wollomatic/socket-proxy)](https://hub.docker.com/r/wollomatic/socket-proxy).
-
+and on the [GitHub Container Registry (ghcr.io/wollomatic/socket-proxy)](https://github.com/wollomatic/socket-proxy/pkgs/container/socket-proxy).
 
 To pin one specific version, use the version tag (for example, `wollomatic/socket-proxy:1.6.0` or `ghcr.io/wollomatic/socket-proxy:1.6.0`).
 To always use the most recent version, use the `1` tag (`wollomatic/socket-proxy:1` or `ghcr.io/wollomatic/socket-proxy:1`). This tag will be valid as long as there is no breaking change in the deployment.
