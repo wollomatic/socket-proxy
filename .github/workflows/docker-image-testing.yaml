@@ -22,10 +22,10 @@ jobs:
         with:
           args: ./...
 
-      - name: Install Cosign
-        uses: sigstore/cosign-installer@v3.8.1
-        with:
-          cosign-release: 'v2.4.3'
+#      - name: Install Cosign
+#        uses: sigstore/cosign-installer@v3.8.1
+#        with:
+#          cosign-release: 'v2.4.3'
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -57,14 +57,14 @@ jobs:
             ghcr.io/wollomatic/socket-proxy:testing
             ghcr.io/wollomatic/socket-proxy:testing-${{ github.sha }}
 
-      - name: Sign Docker Hub image
-        run: cosign sign --yes --recursive --key env://COSIGN_PRIVATE_KEY docker.io/wollomatic/socket-proxy:testing-${{ github.sha }}@${{ steps.build-and-push.outputs.digest }}
-        env:
-          COSIGN_PRIVATE_KEY: ${{ secrets.COSIGN_PRIVATE_KEY }}
-          COSIGN_PASSWORD: ${{ secrets.COSIGN_PASSWORD }}
-
-      - name: Sign GitHub Container Registry image
-        run: cosign sign --yes --recursive --key env://COSIGN_PRIVATE_KEY ghcr.io/wollomatic/socket-proxy:testing-${{ github.sha }}@${{ steps.build-and-push.outputs.digest }}
-        env:
-          COSIGN_PRIVATE_KEY: ${{ secrets.COSIGN_PRIVATE_KEY }}
-          COSIGN_PASSWORD: ${{ secrets.COSIGN_PASSWORD }}
+#      - name: Sign Docker Hub image
+#        run: cosign sign --yes --recursive --key env://COSIGN_PRIVATE_KEY docker.io/wollomatic/socket-proxy:testing-${{ github.sha }}@${{ steps.build-and-push.outputs.digest }}
+#        env:
+#          COSIGN_PRIVATE_KEY: ${{ secrets.COSIGN_PRIVATE_KEY }}
+#          COSIGN_PASSWORD: ${{ secrets.COSIGN_PASSWORD }}
+#
+#      - name: Sign GitHub Container Registry image
+#        run: cosign sign --yes --recursive --key env://COSIGN_PRIVATE_KEY ghcr.io/wollomatic/socket-proxy:testing-${{ github.sha }}@${{ steps.build-and-push.outputs.digest }}
+#        env:
+#          COSIGN_PRIVATE_KEY: ${{ secrets.COSIGN_PRIVATE_KEY }}
+#          COSIGN_PASSWORD: ${{ secrets.COSIGN_PASSWORD }}
