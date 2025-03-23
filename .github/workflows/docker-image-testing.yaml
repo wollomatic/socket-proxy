@@ -18,6 +18,11 @@ jobs:
       - name: Run Gosec Security Scanner
         uses: securego/gosec@master
 
+      - name: Install Cosign
+        uses: sigstore/cosign-installer@v3.8.1
+        with:
+          cosign-release: 'v2.4.3'
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
@@ -36,3 +41,9 @@ jobs:
           push: true
           build-args: VERSION=testing-${{ github.sha }}
           tags: docker.io/wollomatic/socket-proxy:testing,docker.io/wollomatic/socket-proxy:testing-${{ github.sha }}
+
+      - name: Sign images for all platforms
+        run: cosign sign --yes --key env://COSIGN_PRIVATE_KEY docker.io/wollomatic/socket-proxy:${{ steps.get_tag.outputs.VERSION }}@${{ steps.build-and-push.outputs.digest }}
+        env:
+          COSIGN_PRIVATE_KEY: ${{ secrets.COSIGN_PRIVATE_KEY }}
+          COSIGN_PASSWORD: ${{ secrets.COSIGN_PASSWORD }}
