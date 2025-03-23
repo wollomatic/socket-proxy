@@ -60,8 +60,14 @@ jobs:
             ghcr.io/wollomatic/socket-proxy:${{ steps.get_tag.outputs.VERSION }}
             ghcr.io/wollomatic/socket-proxy:1
 
-      - name: Sign images for all platforms
-        run: cosign sign --yes --key env://COSIGN_PRIVATE_KEY docker.io/wollomatic/socket-proxy:${{ steps.get_tag.outputs.VERSION }}@${{ steps.build-and-push.outputs.digest }}
+      - name: Sign images for Docker
+        run: cosign sign --yes --recursive --key env://COSIGN_PRIVATE_KEY docker.io/wollomatic/socket-proxy:${{ steps.get_tag.outputs.VERSION }}@${{ steps.build-and-push.outputs.digest }}
+        env:
+          COSIGN_PRIVATE_KEY: ${{ secrets.COSIGN_PRIVATE_KEY }}
+          COSIGN_PASSWORD: ${{ secrets.COSIGN_PASSWORD }}
+
+      - name: Sign images for GHCR
+        run: cosign sign --yes --recursive --key env://COSIGN_PRIVATE_KEY ghcr.io/wollomatic/socket-proxy:${{ steps.get_tag.outputs.VERSION }}@${{ steps.build-and-push.outputs.digest }}
         env:
           COSIGN_PRIVATE_KEY: ${{ secrets.COSIGN_PRIVATE_KEY }}
           COSIGN_PASSWORD: ${{ secrets.COSIGN_PASSWORD }}
