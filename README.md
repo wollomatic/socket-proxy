@@ -1,5 +1,9 @@
 # socket-proxy
 
+## Latest image
+- `wollomatic/socket-proxy:1.6.1` / `ghcr.io/wollomatic/socket-proxy:1.6.1`
+- `wollomatic/socket-proxy:1` / `ghcr.io/wollomatic/socket-proxy:1`
+
 ## About
 `socket-proxy` is a lightweight, secure-by-default unix socket proxy. Although it was created to proxy the docker socket to Traefik, it can also be used for other purposes.
 It is heavily inspired by [tecnativa/docker-socket-proxy](https://github.com/Tecnativa/docker-socket-proxy).
