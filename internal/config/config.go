@@ -156,6 +156,11 @@ func InitConfig() (*Config, error) {
 	}
 	flag.Parse()
 
+	for i := range mr {
+		mr[i].regexStringFromParam = os.ExpandEnv(mr[i].regexStringFromParam)
+		mr[i].regexStringFromEnv = os.ExpandEnv(mr[i].regexStringFromEnv)
+	}
+
 	// check listenIP and proxyPort
 	if net.ParseIP(listenIP) == nil {
 		return nil, fmt.Errorf("invalid IP \"%s\" for listenip", listenIP)
