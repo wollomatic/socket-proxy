@@ -77,7 +77,7 @@ It is also possible to configure the allowlist via environment variables. The va
 
 If both commandline parameter and environment variable is configured for a particular HTTP method, the environment variable is ignored.
 
-Use Go's regexp syntax to create the patterns for these parameters. To avoid insecure configurations, the characters ^ at the beginning and $ at the end of the string are automatically added. Note: invalid regexp results in program termination.
+Use Go's regexp syntax to create the patterns for these parameters. To avoid insecure configurations, the characters ^ at the beginning and $ at the end of the string are automatically added. Note: invalid regexp results in program termination. It also will be expanded with environment variables.
 
 Examples (command line):
 + `'-allowGET=/v1\..{1,2}/(version|containers/.*|events.*)'` could be used for allowing access to the docker socket for Traefik v2.
