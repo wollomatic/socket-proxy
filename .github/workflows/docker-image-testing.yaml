@@ -1,9 +1,7 @@
 name: Build and Publish Testing
 
 on:
-   push:
-     branches:
-       - develop
+  workflow_dispatch:
 
 jobs:
 
