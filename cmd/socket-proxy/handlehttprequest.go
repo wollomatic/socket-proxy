@@ -5,7 +5,6 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
-	"strings"
 )
 
 // handleHTTPRequest checks if the request is allowed and sends it to the proxy.
@@ -34,7 +33,7 @@ func handleHTTPRequest(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// finally log and proxy the request
+	// finally, log and proxy the request
 	slog.Debug("allowed request", "method", r.Method, "URL", r.URL, "client", r.RemoteAddr)
 	socketProxy.ServeHTTP(w, r) // proxy the request
 }
@@ -53,31 +52,35 @@ func isAllowedClient(remoteAddr string) (bool, error) {
 		return false, errors.New("invalid IP format")
 	}
 
-	_, allowedIPNet, err := net.ParseCIDR(cfg.AllowFrom)
-	if err == nil {
-		// AllowFrom is a valid CIDR, so check if IP address is in allowed network
-		return allowedIPNet.Contains(clientIP), nil
-	}
+	for _, allowFromItem := range cfg.AllowFrom {
 
-	// AllowFrom is not a valid CIDR, so try to resolve it via DNS
-	// split over comma to support multiple hostnames
-	allowFromList := strings.Split(cfg.AllowFrom, ",")
-	for _, allowFrom := range allowFromList {
-		ips, err := net.LookupIP(allowFrom)
+		// first try to handle as an CIDR
+		_, allowedIPNet, err := net.ParseCIDR(allowFromItem)
+		if err == nil {
+			// AllowFrom is a valid CIDR, so check if IP address is in allowed network
+			return allowedIPNet.Contains(clientIP), nil
+		}
+
+		// AllowFrom is not a valid CIDR, so try to resolve it via DNS
+		// We intentionally do not cache the DNS lookups.
+		// In our use case, the resolver should be a local service, and we don't want to cause DNS caching errors.
+		ips, err := net.LookupIP(allowFromItem)
 		if err != nil {
-			slog.Warn("error looking up allowed client hostname", "hostname", allowFrom, "error", err.Error())
+			slog.Warn("error looking up allowed client hostname", "hostname", allowFromItem, "error", err.Error())
 		}
 		for _, ip := range ips {
-			// Check if IP address is one of the resolved IPs
+			// Check if the IP address is one of the resolved IPs
 			if ip.Equal(clientIP) {
 				return true, nil
 			}
 		}
 	}
+
+	// If we get here, the IP address is not allowed
 	return false, nil
 }
 
-// sendHTTPError sends a HTTP error with the given status code.
+// sendHTTPError sends an HTTP error with the given status code.
 func sendHTTPError(w http.ResponseWriter, status int) {
 	http.Error(w, http.StatusText(status), status)
 }
