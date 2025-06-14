@@ -31,7 +31,7 @@ var (
 
 type Config struct {
 	AllowedRequests             map[string]*regexp.Regexp
-	AllowFrom                   string
+	AllowFrom                   []string
 	AllowHealthcheck            bool
 	LogJSON                     bool
 	StopOnWatchdog              bool
@@ -70,6 +70,7 @@ var mr = []methodRegex{
 func InitConfig() (*Config, error) {
 	var (
 		cfg              Config
+		allowFromString  string
 		listenIP         string
 		proxyPort        uint
 		logLevel         string
@@ -133,7 +134,7 @@ func InitConfig() (*Config, error) {
 		}
 	}
 
-	flag.StringVar(&cfg.AllowFrom, "allowfrom", defaultAllowFrom, "allowed IPs or hostname to connect to the proxy")
+	flag.StringVar(&allowFromString, "allowfrom", defaultAllowFrom, "allowed IPs or hostname to connect to the proxy")
 	flag.BoolVar(&cfg.AllowHealthcheck, "allowhealthcheck", defaultAllowHealthcheck, "allow health check requests (HEAD http://localhost:55555/health)")
 	flag.BoolVar(&cfg.LogJSON, "logjson", defaultLogJSON, "log in JSON format (otherwise log in plain text")
 	flag.StringVar(&listenIP, "listenip", defaultListenIP, "ip address to listen on")
@@ -155,6 +156,9 @@ func InitConfig() (*Config, error) {
 		flag.StringVar(&mr[i].regexStringFromParam, "allow"+mr[i].method, "", "regex for "+mr[i].method+" requests (not set means method is not allowed)")
 	}
 	flag.Parse()
+
+	// parse comma-separeted allowFromString into allowFrom slice
+	cfg.AllowFrom = strings.Split(allowFromString, ",")
 
 	// check listenIP and proxyPort
 	if net.ParseIP(listenIP) == nil {

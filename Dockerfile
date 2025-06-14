@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1
-FROM --platform=$BUILDPLATFORM golang:1.24.2-alpine3.21 AS build
+FROM --platform=$BUILDPLATFORM golang:1.24.4-alpine3.22 AS build
 WORKDIR /application
 COPY . ./
 ARG TARGETOS
