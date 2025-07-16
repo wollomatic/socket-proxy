@@ -33,6 +33,12 @@ func handleHTTPRequest(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// check bind mount restrictions
+	if err := checkBindMountRestrictions(r); err != nil {
+		communicateBlockedRequest(w, r, "bind mount restriction: "+err.Error(), http.StatusForbidden)
+		return
+	}
+
 	// finally, log and proxy the request
 	slog.Debug("allowed request", "method", r.Method, "URL", r.URL, "client", r.RemoteAddr)
 	socketProxy.ServeHTTP(w, r) // proxy the request
