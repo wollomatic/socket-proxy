@@ -11,6 +11,32 @@ import (
 	"strings"
 )
 
+/*
+The subsets of github.com/docker/docker/api/types/ are licensed under a Apache 2.0 license.
+
+NOTICE regarding this file only:
+
+Docker
+Copyright 2012-2017 Docker, Inc.
+
+This product includes software developed at Docker, Inc. (https://www.docker.com).
+
+This product contains software (https://github.com/creack/pty) developed
+by Keith Rarick, licensed under the MIT License.
+
+The following is courtesy of our legal counsel:
+
+
+Use and transfer of Docker may be subject to certain restrictions by the
+United States and other governments.
+It is your responsibility to ensure that your use and/or transfer does not
+violate applicable laws.
+
+For more information, please see https://www.bis.doc.gov
+
+See also https://www.apache.org/dev/crypto.html and/or seek legal counsel.
+*/
+
 // mountType is the subset of github.com/docker/docker/api/types/mount.Type.
 type mountType string
 

@@ -218,7 +218,7 @@ socket-proxy can be configured via command line parameters or via environment va
 
 1.2 - reformat logging of allowlist on program start
 
-1.3 - allow multiple, comma-separated hostnames in `-allowfrom` parameter
+1.3 - allow multiple, comma-separated hostnames in `-allowfrom` parameter (thanks [@ildyria])
 
 1.4 - allow configuration from env variables
 
@@ -228,9 +228,13 @@ socket-proxy can be configured via command line parameters or via environment va
 
 1.7 - also allow comma-separated CIDRs in `-allowfrom` (not only hostnames as in versions > 1.3)
 
-## License
+1.8 - add optional bind mount restrictions (thanks [@powerman])
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+## License
+This project is licensed under the MIT License – see the [LICENSE](LICENSE) file for details.
+
+Parts of the file `cmd/internal/bindmount.go` are licensed under the Apache 2.0 License.  
+See the comments in this file and the LICENSE file for more information.
 
 ## Aknowledgements
 
