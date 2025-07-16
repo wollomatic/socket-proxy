@@ -3,12 +3,24 @@ package main
 import (
 	"bytes"
 	"net/http"
+	"runtime"
 	"testing"
 
 	"github.com/wollomatic/socket-proxy/internal/config"
 )
 
+func skipIfNotUnix(t *testing.T) {
+	switch runtime.GOOS {
+	case "linux", "darwin", "freebsd", "openbsd", "netbsd", "dragonfly", "solaris", "aix":
+		// Supported Unix platforms
+	default:
+		t.Skip("skipping test: only runs on Unix-like systems")
+	}
+}
+
 func TestValidateBindMountSource(t *testing.T) {
+	skipIfNotUnix(t)
+
 	cfg = &config.Config{
 		AllowBindMountFrom: []string{"/home", "/var/log"},
 	}
@@ -44,6 +56,8 @@ func TestValidateBindMountSource(t *testing.T) {
 }
 
 func TestIsPathAllowed(t *testing.T) {
+	skipIfNotUnix(t)
+
 	tests := []struct {
 		name       string
 		path       string
@@ -81,6 +95,8 @@ func TestIsPathAllowed(t *testing.T) {
 }
 
 func TestValidateBindMount(t *testing.T) {
+	skipIfNotUnix(t)
+
 	cfg = &config.Config{
 		AllowBindMountFrom: []string{"/home", "/var/log"},
 	}
@@ -111,6 +127,8 @@ func TestValidateBindMount(t *testing.T) {
 }
 
 func TestCheckBindMountRestrictions(t *testing.T) {
+	skipIfNotUnix(t)
+
 	cfg = &config.Config{
 		AllowBindMountFrom: []string{"/home"},
 	}
