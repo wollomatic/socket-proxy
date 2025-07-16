@@ -79,6 +79,20 @@ If both commandline parameter and environment variable is configured for a parti
 
 Use Go's regexp syntax to create the patterns for these parameters. To avoid insecure configurations, the characters ^ at the beginning and $ at the end of the string are automatically added. Note: invalid regexp results in program termination.
 
+#### Setting up bind mount restrictions
+
+By default, socket-proxy does not restrict bind mounts. If you want to add an additional layer of security by restricting which directories can be used as bind mount sources, you can use the `-allowbindmountfrom` parameter or the `SP_ALLOWBINDMOUNTFROM` environment variable.
+
+When configured, only bind mounts from the specified directories or their subdirectories are allowed. Each directory must start with `/`. Multiple directories can be specified separated by commas.
+
+For example:
++ `-allowbindmountfrom=/home,/var/log` allows bind mounts from `/home`, `/var/log`, and any subdirectories like `/home/user/data` or `/var/log/app`
++ `SP_ALLOWBINDMOUNTFROM="/app/data,/tmp"` allows bind mounts from `/app/data` and `/tmp` directories
+
+Bind mount restrictions are applied to relevant Docker API endpoints and work with both legacy bind mount syntax (`-v /host/path:/container/path`) and modern mount syntax.
+
+**Note**: This feature only restricts bind mounts. Other mount types (volumes, tmpfs, etc.) are not affected by this restriction.
+
 Examples (command line):
 + `'-allowGET=/v1\..{1,2}/(version|containers/.*|events.*)'` could be used for allowing access to the docker socket for Traefik v2.
 + `'-allowHEAD=.*` allows all HEAD requests.
@@ -133,6 +147,7 @@ services:
       - '-listenip=0.0.0.0'
       - '-allowfrom=traefik' # allow only hostname "traefik" to connect
       - '-allowGET=/v1\..{1,2}/(version|containers/.*|events.*)'
+      - '-allowbindmountfrom=/var/log,/tmp' # restrict bind mounts to specific directories
       - '-watchdoginterval=3600' # check once per hour for socket availability
       - '-stoponwatchdog' # halt program on error and let compose restart it
       - '-shutdowngracetime=5' # wait 5 seconds before shutting down
@@ -182,6 +197,7 @@ socket-proxy can be configured via command line parameters or via environment va
 | Parameter                      | Environment Variable             | Default Value          | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
 |--------------------------------|----------------------------------|------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | `-allowfrom`                   | `SP_ALLOWFROM`                   | `127.0.0.1/32`         | Specifies the IP addresses or hostnames (comma-separated) of the clients or the hostname of one specific client allowed to connect to the proxy. The default value is `127.0.0.1/32`, which means only localhost is allowed. This default configuration may not be useful in most cases, but it is because of a secure-by-default design. To allow all IPv4 addresses, set `-allowfrom=0.0.0.0/0`. Alternatively, hostnames can be set, for example `-allowfrom=traefik`, or `-allowfrom=traefik,dozzle`. Please remember that socket-proxy should never be exposed to a public network, regardless of this extra security layer. |
+| `-allowbindmountfrom`          | `SP_ALLOWBINDMOUNTFROM`          | (not set)              | Specifies the directories (comma-separated) that are allowed as bind mount sources. If not set, no bind mount restrictions are applied. When set, only bind mounts from the specified directories or their subdirectories are allowed. Each directory must start with `/`. For example, `-allowbindmountfrom=/home,/var/log` allows bind mounts from `/home`, `/var/log`, and any subdirectories.                                                                                                                                                                                                                                   |
 | `-allowhealthcheck`            | `SP_ALLOWHEALTHCHECK`            | (not set/false)        | If set, it allows the included health check binary to check the socket connection via TCP port 55555 (socket-proxy then listens on `127.0.0.1:55555/health`)                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
 | `-listenip`                    | `SP_LISTENIP`                    | `127.0.0.1`            | Specifies the IP address the server will bind on. Default is only the internal network.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
 | `-logjson`                     | `SP_LOGJSON`                     | (not set/false)        | If set, it enables logging in JSON format. If unset, docker-proxy logs in plain text format.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
