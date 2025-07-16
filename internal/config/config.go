@@ -149,13 +149,13 @@ func InitConfig() (*Config, error) {
 	flag.UintVar(&proxyPort, "proxyport", defaultProxyPort, "tcp port to listen on")
 	flag.UintVar(&cfg.ShutdownGraceTime, "shutdowngracetime", defaultShutdownGraceTime, "maximum time in seconds to wait for the server to shut down gracefully")
 	if cfg.ShutdownGraceTime > math.MaxInt {
-		return nil, fmt.Errorf("shutdowngracetime has to be smaller than %i", math.MaxInt) // this maximum value has no practical significance
+		return nil, fmt.Errorf("shutdowngracetime has to be smaller than %d", math.MaxInt) // this maximum value has no practical significance
 	}
 	flag.StringVar(&cfg.SocketPath, "socketpath", defaultSocketPath, "unix socket path to connect to")
 	flag.BoolVar(&cfg.StopOnWatchdog, "stoponwatchdog", defaultStopOnWatchdog, "stop the program when the socket gets unavailable (otherwise log only)")
 	flag.UintVar(&cfg.WatchdogInterval, "watchdoginterval", defaultWatchdogInterval, "watchdog interval in seconds (0 to disable)")
 	if cfg.WatchdogInterval > math.MaxInt {
-		return nil, fmt.Errorf("watchdoginterval has to be smaller than %i", math.MaxInt) // this maximum value has no practical significance
+		return nil, fmt.Errorf("watchdoginterval has to be smaller than %d", math.MaxInt) // this maximum value has no practical significance
 	}
 	flag.StringVar(&cfg.ProxySocketEndpoint, "proxysocketendpoint", defaultProxySocketEndpoint, "unix socket endpoint (if set, used instead of the TCP listener)")
 	flag.UintVar(&endpointFileMode, "proxysocketendpointfilemode", defaultProxySocketEndpointFileMode, "set the file mode of the unix socket endpoint")
