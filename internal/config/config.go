@@ -9,6 +9,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
@@ -27,6 +28,7 @@ var (
 	defaultStopOnWatchdog              = false                  // set to true to stop the program when the socket gets unavailable (otherwise log only)
 	defaultProxySocketEndpoint         = ""                     // empty string means no socket listener, but regular TCP listener
 	defaultProxySocketEndpointFileMode = uint(0o400)            // set the file mode of the unix socket endpoint
+	defaultAllowBindMountFrom          = ""                     // empty string means no bind mount restrictions
 )
 
 type Config struct {
@@ -42,6 +44,7 @@ type Config struct {
 	SocketPath                  string
 	ProxySocketEndpoint         string
 	ProxySocketEndpointFileMode os.FileMode
+	AllowBindMountFrom          []string
 }
 
 // used for list of allowed requests
@@ -69,12 +72,13 @@ var mr = []methodRegex{
 
 func InitConfig() (*Config, error) {
 	var (
-		cfg              Config
-		allowFromString  string
-		listenIP         string
-		proxyPort        uint
-		logLevel         string
-		endpointFileMode uint
+		cfg                      Config
+		allowFromString          string
+		listenIP                 string
+		proxyPort                uint
+		logLevel                 string
+		endpointFileMode         uint
+		allowBindMountFromString string
 	)
 
 	if val, ok := os.LookupEnv("SP_ALLOWFROM"); ok && val != "" {
@@ -127,6 +131,9 @@ func InitConfig() (*Config, error) {
 			defaultProxySocketEndpointFileMode = uint(parsedVal)
 		}
 	}
+	if val, ok := os.LookupEnv("SP_ALLOWBINDMOUNTFROM"); ok && val != "" {
+		defaultAllowBindMountFrom = val
+	}
 
 	for i := range mr {
 		if val, ok := os.LookupEnv("SP_ALLOW_" + mr[i].method); ok && val != "" {
@@ -142,16 +149,17 @@ func InitConfig() (*Config, error) {
 	flag.UintVar(&proxyPort, "proxyport", defaultProxyPort, "tcp port to listen on")
 	flag.UintVar(&cfg.ShutdownGraceTime, "shutdowngracetime", defaultShutdownGraceTime, "maximum time in seconds to wait for the server to shut down gracefully")
 	if cfg.ShutdownGraceTime > math.MaxInt {
-		return nil, fmt.Errorf("shutdowngracetime has to be smaller than %i", math.MaxInt) // this maximum value has no practical significance
+		return nil, fmt.Errorf("shutdowngracetime has to be smaller than %d", math.MaxInt) // this maximum value has no practical significance
 	}
 	flag.StringVar(&cfg.SocketPath, "socketpath", defaultSocketPath, "unix socket path to connect to")
 	flag.BoolVar(&cfg.StopOnWatchdog, "stoponwatchdog", defaultStopOnWatchdog, "stop the program when the socket gets unavailable (otherwise log only)")
 	flag.UintVar(&cfg.WatchdogInterval, "watchdoginterval", defaultWatchdogInterval, "watchdog interval in seconds (0 to disable)")
 	if cfg.WatchdogInterval > math.MaxInt {
-		return nil, fmt.Errorf("watchdoginterval has to be smaller than %i", math.MaxInt) // this maximum value has no practical significance
+		return nil, fmt.Errorf("watchdoginterval has to be smaller than %d", math.MaxInt) // this maximum value has no practical significance
 	}
 	flag.StringVar(&cfg.ProxySocketEndpoint, "proxysocketendpoint", defaultProxySocketEndpoint, "unix socket endpoint (if set, used instead of the TCP listener)")
 	flag.UintVar(&endpointFileMode, "proxysocketendpointfilemode", defaultProxySocketEndpointFileMode, "set the file mode of the unix socket endpoint")
+	flag.StringVar(&allowBindMountFromString, "allowbindmountfrom", defaultAllowBindMountFrom, "allowed directories for bind mounts (comma-separated)")
 	for i := range mr {
 		flag.StringVar(&mr[i].regexStringFromParam, "allow"+mr[i].method, "", "regex for "+mr[i].method+" requests (not set means method is not allowed)")
 	}
@@ -159,6 +167,17 @@ func InitConfig() (*Config, error) {
 
 	// parse comma-separeted allowFromString into allowFrom slice
 	cfg.AllowFrom = strings.Split(allowFromString, ",")
+
+	// parse allowBindMountFromString into AllowBindMountFrom slice and validate
+	if allowBindMountFromString != "" {
+		cfg.AllowBindMountFrom = strings.Split(allowBindMountFromString, ",")
+		for i, dir := range cfg.AllowBindMountFrom {
+			if !strings.HasPrefix(dir, "/") {
+				return nil, fmt.Errorf("bind mount directory must start with /: %q", dir)
+			}
+			cfg.AllowBindMountFrom[i] = filepath.Clean(dir)
+		}
+	}
 
 	// check listenIP and proxyPort
 	if net.ParseIP(listenIP) == nil {
