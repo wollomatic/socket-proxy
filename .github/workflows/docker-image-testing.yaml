@@ -43,20 +43,6 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build and push Docker image
-        uses: docker/build-push-action@v5
-        id: build-and-push
-        with:
-          context: .
-          platforms: linux/amd64,linux/arm/v7,linux/arm64
-          push: true
-          build-args: VERSION=testing-${{ github.sha }}
-          tags: | 
-            docker.io/wollomatic/socket-proxy:testing
-            docker.io/wollomatic/socket-proxy:testing-${{ github.sha }}
-            ghcr.io/wollomatic/socket-proxy:testing
-            ghcr.io/wollomatic/socket-proxy:testing-${{ github.sha }}
-
       - name: Build and push Docker Hub image
         uses: docker/build-push-action@v5
         id: push-dockerhub
