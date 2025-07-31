@@ -219,7 +219,7 @@ func InitConfig() (*Config, error) {
 		} else if rx.regexStringFromEnv != "" {
 			r, err := regexp.Compile("^" + rx.regexStringFromEnv + "$")
 			if err != nil {
-				return nil, fmt.Errorf("invalid regex \"%s\" for method %s in env variable: %w", rx.regexStringFromParam, rx.method, err)
+				return nil, fmt.Errorf("invalid regex \"%s\" for method %s in env variable: %w", rx.regexStringFromEnv, rx.method, err)
 			}
 			cfg.AllowedRequests[rx.method] = r
 		}
