@@ -79,20 +79,6 @@ If both commandline parameter and environment variable is configured for a parti
 
 Use Go's regexp syntax to create the patterns for these parameters. To avoid insecure configurations, the characters ^ at the beginning and $ at the end of the string are automatically added. Note: invalid regexp results in program termination.
 
-#### Setting up bind mount restrictions
-
-By default, socket-proxy does not restrict bind mounts. If you want to add an additional layer of security by restricting which directories can be used as bind mount sources, you can use the `-allowbindmountfrom` parameter or the `SP_ALLOWBINDMOUNTFROM` environment variable.
-
-When configured, only bind mounts from the specified directories or their subdirectories are allowed. Each directory must start with `/`. Multiple directories can be specified separated by commas.
-
-For example:
-+ `-allowbindmountfrom=/home,/var/log` allows bind mounts from `/home`, `/var/log`, and any subdirectories like `/home/user/data` or `/var/log/app`
-+ `SP_ALLOWBINDMOUNTFROM="/app/data,/tmp"` allows bind mounts from `/app/data` and `/tmp` directories
-
-Bind mount restrictions are applied to relevant Docker API endpoints and work with both legacy bind mount syntax (`-v /host/path:/container/path`) and modern mount syntax.
-
-**Note**: This feature only restricts bind mounts. Other mount types (volumes, tmpfs, etc.) are not affected by this restriction.
-
 Examples (command line):
 + `'-allowGET=/v1\..{1,2}/(version|containers/.*|events.*)'` could be used for allowing access to the docker socket for Traefik v2.
 + `'-allowHEAD=.*` allows all HEAD requests.
@@ -106,6 +92,20 @@ For more information, refer to the [Go regexp documentation](https://golang.org/
 An excellent online regexp tester is [regex101.com](https://regex101.com/).
 
 To determine which HTTP requests your client application uses, you could switch socket-proxy to debug log level and look at the log output while allowing all requests in a secure environment.
+
+#### Setting up bind mount restrictions
+
+By default, socket-proxy does not restrict bind mounts. If you want to add an additional layer of security by restricting which directories can be used as bind mount sources, you can use the `-allowbindmountfrom` parameter or the `SP_ALLOWBINDMOUNTFROM` environment variable.
+
+When configured, only bind mounts from the specified directories or their subdirectories are allowed. Each directory must start with `/`. Multiple directories can be specified separated by commas.
+
+For example:
++ `-allowbindmountfrom=/home,/var/log` allows bind mounts from `/home`, `/var/log`, and any subdirectories like `/home/user/data` or `/var/log/app`
++ `SP_ALLOWBINDMOUNTFROM="/app/data,/tmp"` allows bind mounts from `/app/data` and `/tmp` directories
+
+Bind mount restrictions are applied to relevant Docker API endpoints and work with both legacy bind mount syntax (`-v /host/path:/container/path`) and modern mount syntax.
+
+**Note**: This feature only restricts bind mounts. Other mount types (volumes, tmpfs, etc.) are not affected by this restriction.
 
 ### Container health check
 
