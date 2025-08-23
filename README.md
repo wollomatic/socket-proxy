@@ -1,7 +1,7 @@
 # socket-proxy
 
 ## Latest image
-- `wollomatic/socket-proxy:1.8.1` / `ghcr.io/wollomatic/socket-proxy:1.8.1`
+- `wollomatic/socket-proxy:1.9.0` / `ghcr.io/wollomatic/socket-proxy:1.9.0`
 - `wollomatic/socket-proxy:1` / `ghcr.io/wollomatic/socket-proxy:1`
 
 ## About
@@ -33,7 +33,7 @@ You should know what you are doing. Never expose socket-proxy to a public networ
 The container image is available on [Docker Hub (wollomatic/socket-proxy)](https://hub.docker.com/r/wollomatic/socket-proxy) 
 and on the [GitHub Container Registry (ghcr.io/wollomatic/socket-proxy)](https://github.com/wollomatic/socket-proxy/pkgs/container/socket-proxy).
 
-To pin one specific version, use the version tag (for example, `wollomatic/socket-proxy:1.6.0` or `ghcr.io/wollomatic/socket-proxy:1.6.0`).
+To pin one specific version, use the version tag (for example, `wollomatic/socket-proxy:1.9.0` or `ghcr.io/wollomatic/socket-proxy:1.9.0`).
 To always use the most recent version, use the `1` tag (`wollomatic/socket-proxy:1` or `ghcr.io/wollomatic/socket-proxy:1`). This tag will be valid as long as there is no breaking change in the deployment.
 
 There may be an additional docker image with the `testing`-tag. This image is only for testing. Likely, documentation for the `testing` image could only be found in the GitHub commit messages. It is not recommended to use the `testing` image in production.
@@ -75,7 +75,7 @@ The name of a parameter should be "-allow", followed by the HTTP method name (fo
 
 It is also possible to configure the allowlist via environment variables. The variables are called "SP_ALLOW_", followed by the HTTP method (for example, `SP_ALLLOW_GET`).
 
-If both commandline parameter and environment variable is configured for a particular HTTP method, the environment variable is ignored.
+If both commandline parameter and environment variable are configured for a particular HTTP method, the environment variable is ignored.
 
 Use Go's regexp syntax to create the patterns for these parameters. To avoid insecure configurations, the characters ^ at the beginning and $ at the end of the string are automatically added. Note: invalid regexp results in program termination.
 
@@ -159,7 +159,7 @@ services:
                            # it is not the same as the traefik-servicenet
 
   traefik:
-    # [...] see github.com/wollomatic/traefik2-hardened for a full example
+    # [...] see github.com/wollomatic/traefik-hardened for a full example
     depends_on:
       - dockerproxy
     networks:
@@ -197,7 +197,7 @@ socket-proxy can be configured via command line parameters or via environment va
 | Parameter                      | Environment Variable             | Default Value          | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
 |--------------------------------|----------------------------------|------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | `-allowfrom`                   | `SP_ALLOWFROM`                   | `127.0.0.1/32`         | Specifies the IP addresses or hostnames (comma-separated) of the clients or the hostname of one specific client allowed to connect to the proxy. The default value is `127.0.0.1/32`, which means only localhost is allowed. This default configuration may not be useful in most cases, but it is because of a secure-by-default design. To allow all IPv4 addresses, set `-allowfrom=0.0.0.0/0`. Alternatively, hostnames can be set, for example `-allowfrom=traefik`, or `-allowfrom=traefik,dozzle`. Please remember that socket-proxy should never be exposed to a public network, regardless of this extra security layer. |
-| `-allowbindmountfrom`          | `SP_ALLOWBINDMOUNTFROM`          | (not set)              | Specifies the directories (comma-separated) that are allowed as bind mount sources. If not set, no bind mount restrictions are applied. When set, only bind mounts from the specified directories or their subdirectories are allowed. Each directory must start with `/`. For example, `-allowbindmountfrom=/home,/var/log` allows bind mounts from `/home`, `/var/log`, and any subdirectories.                                                                                                                                                                                                                                   |
+| `-allowbindmountfrom`          | `SP_ALLOWBINDMOUNTFROM`          | (not set)              | Specifies the directories (comma-separated) that are allowed as bind mount sources. If not set, no bind mount restrictions are applied. When set, only bind mounts from the specified directories or their subdirectories are allowed. Each directory must start with `/`. For example, `-allowbindmountfrom=/home,/var/log` allows bind mounts from `/home`, `/var/log`, and any subdirectories.                                                                                                                                                                                                                                 |
 | `-allowhealthcheck`            | `SP_ALLOWHEALTHCHECK`            | (not set/false)        | If set, it allows the included health check binary to check the socket connection via TCP port 55555 (socket-proxy then listens on `127.0.0.1:55555/health`)                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
 | `-listenip`                    | `SP_LISTENIP`                    | `127.0.0.1`            | Specifies the IP address the server will bind on. Default is only the internal network.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
 | `-logjson`                     | `SP_LOGJSON`                     | (not set/false)        | If set, it enables logging in JSON format. If unset, docker-proxy logs in plain text format.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
@@ -228,7 +228,9 @@ socket-proxy can be configured via command line parameters or via environment va
 
 1.7 - also allow comma-separated CIDRs in `-allowfrom` (not only hostnames as in versions > 1.3)
 
-1.8 - add optional bind mount restrictions (thanks [@powerman](https://github.com/powerman))
+1.8 - add optional bind mount restrictions (thanks [@powerman](https://github.com/powerman), [@C4tWithShell](https://github.com/C4tWithShell))
+
+1.9 - add IPv6 support to `-listenip` (thanks [@op3](https://github.com/op3))
 
 ## License
 This project is licensed under the MIT License – see the [LICENSE](LICENSE) file for details.
@@ -241,3 +243,8 @@ See the comments in this file and the LICENSE file for more information.
 + [Chris Wiegman: Protecting Your Docker Socket With Traefik 2](https://chriswiegman.com/2019/11/protecting-your-docker-socket-with-traefik-2/) [@ChrisWiegman](https://github.com/ChrisWiegman)
 + [tecnativa/docker-socket-proxy](https://github.com/Tecnativa/docker-socket-proxy)
 + [@justsomescripts](https://github.com/justsomescripts) fix parsing environment variable to configure unix socket
+
+## Alternatives
+
++ [hectorm/cetusguard](https://github.com/hectorm/cetusguard)
++ [11notes/docker-socket-proxy](https://github.com/11notes/docker-socket-proxy)
