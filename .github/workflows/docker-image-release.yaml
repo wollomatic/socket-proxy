@@ -1,4 +1,7 @@
 name: Build and Publish Release
+permissions:
+  contents: read
+  packages: write
 
 on:
    push:
