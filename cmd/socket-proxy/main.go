@@ -69,7 +69,7 @@ func main() {
 		slog.Info("watchdog disabled")
 	}
 	if len(cfg.AllowBindMountFrom) > 0 {
-		slog.Info("Docker bind mount restrictions:", cfg.AllowBindMountFrom)
+		slog.Info("Docker bind mount restrictions enabled", "allowbindmountfrom", cfg.AllowBindMountFrom)
 	} else {
 		// we only log this on DEBUG level because bind mount restrictions are a very special use case
 		slog.Debug("no Docker bind mount restrictions")
