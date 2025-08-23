@@ -180,13 +180,20 @@ func InitConfig() (*Config, error) {
 	}
 
 	// check listenIP and proxyPort
-	if net.ParseIP(listenIP) == nil {
-		return nil, fmt.Errorf("invalid IP \"%s\" for listenip", listenIP)
-	}
 	if proxyPort < 1 || proxyPort > 65535 {
-		return nil, errors.New("port number has to be between 1 and 65535")
+			return nil, errors.New("port number has to be between 1 and 65535")
 	}
-	cfg.ListenAddress = fmt.Sprintf("%s:%d", listenIP, proxyPort)
+	ip := net.ParseIP(listenIP)
+	if ip == nil {
+			return nil, fmt.Errorf("invalid IP \"%s\" for listenip", listenIP)
+	}
+
+	// Properly format address for both IPv4 and IPv6
+	if ip.To4() == nil {
+			cfg.ListenAddress = fmt.Sprintf("[%s]:%d", listenIP, proxyPort)
+	} else {
+			cfg.ListenAddress = fmt.Sprintf("%s:%d", listenIP, proxyPort)
+	}
 
 	// parse defaultLogLevel and setup logging handler depending on defaultLogJSON
 	switch strings.ToUpper(logLevel) {
