@@ -58,9 +58,9 @@ func main() {
 	// print configuration
 	slog.Info("starting socket-proxy", "version", version, "os", runtime.GOOS, "arch", runtime.GOARCH, "runtime", runtime.Version(), "URL", programURL)
 	if cfg.ProxySocketEndpoint == "" {
-		slog.Info("configuration info", "socketpath", cfg.SocketPath, "listenaddress", cfg.ListenAddress, "loglevel", cfg.LogLevel, "logjson", cfg.LogJSON, "allowfrom", cfg.AllowFrom, "shutdowngracetime", cfg.ShutdownGraceTime, "allowbindmountfrom", cfg.AllowBindMountFrom)
+		slog.Info("configuration info", "socketpath", cfg.SocketPath, "listenaddress", cfg.ListenAddress, "loglevel", cfg.LogLevel, "logjson", cfg.LogJSON, "allowfrom", cfg.AllowFrom, "shutdowngracetime", cfg.ShutdownGraceTime)
 	} else {
-		slog.Info("configuration info", "socketpath", cfg.SocketPath, "proxysocketendpoint", cfg.ProxySocketEndpoint, "proxysocketendpointfilemode", cfg.ProxySocketEndpointFileMode, "loglevel", cfg.LogLevel, "logjson", cfg.LogJSON, "allowfrom", cfg.AllowFrom, "shutdowngracetime", cfg.ShutdownGraceTime, "allowbindmountfrom", cfg.AllowBindMountFrom)
+		slog.Info("configuration info", "socketpath", cfg.SocketPath, "proxysocketendpoint", cfg.ProxySocketEndpoint, "proxysocketendpointfilemode", cfg.ProxySocketEndpointFileMode, "loglevel", cfg.LogLevel, "logjson", cfg.LogJSON, "allowfrom", cfg.AllowFrom, "shutdowngracetime", cfg.ShutdownGraceTime)
 		slog.Info("proxysocketendpoint is set, so the TCP listener is deactivated")
 	}
 	if cfg.WatchdogInterval > 0 {
@@ -68,8 +68,14 @@ func main() {
 	} else {
 		slog.Info("watchdog disabled")
 	}
+	if len(cfg.AllowBindMountFrom) > 0 {
+		slog.Info("Docker bind mount restrictions:", cfg.AllowBindMountFrom)
+	} else {
+		// we only log this on DEBUG level because bind mount restrictions are a very special use case
+		slog.Debug("no Docker bind mount restrictions")
+	}
 
-	// print request allow list
+	// print request allowlist
 	if cfg.LogJSON {
 		for method, regex := range cfg.AllowedRequests {
 			slog.Info("configured allowed request", "method", method, "regex", regex)
