@@ -1,2 +1,6 @@
-.github
-examples/
+*
+
+!cmd
+!internal
+!go.mod
+!LICENSE
