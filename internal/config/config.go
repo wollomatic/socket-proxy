@@ -27,7 +27,7 @@ var (
 	defaultWatchdogInterval            = uint(0)                // watchdog interval in seconds (0 to disable)
 	defaultStopOnWatchdog              = false                  // set to true to stop the program when the socket gets unavailable (otherwise log only)
 	defaultProxySocketEndpoint         = ""                     // empty string means no socket listener, but regular TCP listener
-	defaultProxySocketEndpointFileMode = uint(0o400)            // set the file mode of the unix socket endpoint
+	defaultProxySocketEndpointFileMode = uint(0o600)            // set the file mode of the unix socket endpoint
 	defaultAllowBindMountFrom          = ""                     // empty string means no bind mount restrictions
 )
 
