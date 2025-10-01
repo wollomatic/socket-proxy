@@ -24,7 +24,7 @@ services:
       - docker-proxynet
 
   dozzle:
-    image: amir20/dozzle:v6.4.2 # make sure you use the most recent version
+    image: amir20/dozzle:v8.14 # make sure you use the most recent version
     user: 65534:65534
     read_only: true
     mem_limit: 256M
