@@ -1,7 +1,7 @@
 # socket-proxy
 
 ## Latest image
-- `wollomatic/socket-proxy:1.9.0` / `ghcr.io/wollomatic/socket-proxy:1.9.0`
+- `wollomatic/socket-proxy:1.10.0` / `ghcr.io/wollomatic/socket-proxy:1.10.0`
 - `wollomatic/socket-proxy:1` / `ghcr.io/wollomatic/socket-proxy:1`
 
 ## About
@@ -33,7 +33,7 @@ You should know what you are doing. Never expose socket-proxy to a public networ
 The container image is available on [Docker Hub (wollomatic/socket-proxy)](https://hub.docker.com/r/wollomatic/socket-proxy) 
 and on the [GitHub Container Registry (ghcr.io/wollomatic/socket-proxy)](https://github.com/wollomatic/socket-proxy/pkgs/container/socket-proxy).
 
-To pin one specific version, use the version tag (for example, `wollomatic/socket-proxy:1.9.0` or `ghcr.io/wollomatic/socket-proxy:1.9.0`).
+To pin one specific version, use the version tag (for example, `wollomatic/socket-proxy:1.10.0` or `ghcr.io/wollomatic/socket-proxy:1.10.0`).
 To always use the most recent version, use the `1` tag (`wollomatic/socket-proxy:1` or `ghcr.io/wollomatic/socket-proxy:1`). This tag will be valid as long as there is no breaking change in the deployment.
 
 There may be an additional docker image with the `testing`-tag. This image is only for testing. Likely, documentation for the `testing` image could only be found in the GitHub commit messages. It is not recommended to use the `testing` image in production.
@@ -58,6 +58,9 @@ you need to set the `-proxysocketendpoint` parameter or the `SP_PROXYSOCKETENDPO
 This will also disable the TCP listener.
 
 For example `-proxysocketendpoint=/tmp/filtered-socket.sock`
+
+> [!NOTE]
+> Versions prior to 1.10.0 of socket-proxy set the default file permissions of the Unix socket to 0400, instead of 0600 as stated in the documentation.
 
 #### Setting up the IP address or hostname allowlist
 
@@ -192,7 +195,7 @@ To log the API calls of the client application, set the log level to `DEBUG` and
 
 ### all parameters and environment variables
 
-socket-proxy can be configured via command line parameters or via environment variables. If both command line parameter and environment variables are set, the environment variable will be ignored.
+socket-proxy can be configured via command line parameters or via environment variables. If both command line parameters and environment variables are set, the environment variable will be ignored.
 
 | Parameter                      | Environment Variable             | Default Value          | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
 |--------------------------------|----------------------------------|------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
@@ -206,7 +209,7 @@ socket-proxy can be configured via command line parameters or via environment va
 | `-shutdowngracetime`           | `SP_SHUTDOWNGRACETIME`           | `10`                   | Defines the time in seconds to wait before forcing the shutdown after sigtern or sigint (socket-proxy first tries to graceful shut down the TCP server)                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
 | `-socketpath`                  | `SP_SOCKETPATH`                  | `/var/run/docker.sock` | Specifies the UNIX socket path to connect to. By default, it connects to the Docker daemon socket.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
 | `-stoponwatchdog`              | `SP_STOPONWATCHDOG`              | (not set/false)        | If set, socket-proxy will be stopped if the watchdog detects that the unix socket is not available.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
-| `-watchdoginterval`            | `SP_WATCHDOGINTERVAL`            | `0`                    | Check for socket availabibity every x seconds (disable checks, if not set or value is 0)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| `-watchdoginterval`            | `SP_WATCHDOGINTERVAL`            | `0`                    | Check for socket availability every x seconds (disable checks, if not set or value is 0)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
 | `-proxysocketendpoint`         | `SP_PROXYSOCKETENDPOINT`         | (not set)              | Proxy to the given unix socket instead of a TCP port                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
 | `-proxysocketendpointfilemode` | `SP_PROXYSOCKETENDPOINTFILEMODE` | `0600`                 | Explicitly set the file mode for the filtered unix socket endpoint (only useful with `-proxysocketendpoint`)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
 
@@ -231,6 +234,8 @@ socket-proxy can be configured via command line parameters or via environment va
 1.8 - add optional bind mount restrictions (thanks [@powerman](https://github.com/powerman), [@C4tWithShell](https://github.com/C4tWithShell))
 
 1.9 - add IPv6 support to `-listenip` (thanks [@op3](https://github.com/op3))
+
+1.10 - fix socket file mode (thanks [@amanda-wee](https://github.com/amanda-wee)), optimize build actions (thanks [@reneleonhardt](https://github.com/reneleonhardt))
 
 ## License
 This project is licensed under the MIT License – see the [LICENSE](LICENSE) file for details.
