@@ -18,6 +18,7 @@ import (
 	"sync"
 
 	"github.com/docker/docker/api/types/container"
+	"github.com/docker/docker/api/types/events"
 	"github.com/docker/docker/api/types/filters"
 	"github.com/docker/docker/client"
 )
@@ -271,6 +272,8 @@ func InitConfig() (*Config, error) {
 		if err != nil {
 			return nil, err
 		}
+
+		go updateAllowLists(&cfg)
 	}
 
 	return &cfg, nil
@@ -346,27 +349,12 @@ func readContainerLabelAllowLists(networks []string) (map[string]*AllowList, err
 		}
 
 		for _, cntr := range containers {
-			allowedRequests := make(map[string]*regexp.Regexp)
-			allowedBindMounts := []string{}
-			for labelName, labelValue := range cntr.Labels {
-				if strings.HasPrefix(labelName, allowedDockerLabelPrefix) && labelValue != "" {
-					allowSpec := strings.ToUpper(strings.TrimPrefix(labelName, allowedDockerLabelPrefix))
-					if slices.Contains(methods, allowSpec) {
-						r, err := compileRegexp(labelValue, allowSpec, "docker container label")
-						if err != nil {
-							return nil, err
-						}
-						allowedRequests[allowSpec] = r
-					} else if allowSpec == "BINDMOUNTFROM" {
-						allowedBindMounts, err = parseAllowedBindMounts(labelValue)
-						if err != nil {
-							return nil, err
-						}
-					}
-				}
+			allowedRequests, allowedBindMounts, err := extractLabelData(cntr, methods)
+			if err != nil {
+				return nil, err
 			}
 
-			if len(allowedRequests) > 0 {
+			if len(allowedRequests) > 0 || len(allowedBindMounts) > 0 {
 				allowList := AllowList{
 					ID: cntr.ID,
 					AllowedRequests: allowedRequests,
@@ -386,4 +374,132 @@ func readContainerLabelAllowLists(networks []string) (map[string]*AllowList, err
 	}
 
 	return allowListsByIP, nil
+}
+
+func extractLabelData(cntr container.Summary, methods []string) (map[string]*regexp.Regexp, []string, error) {
+	allowedRequests := make(map[string]*regexp.Regexp)
+	allowedBindMounts := []string{}
+	for labelName, labelValue := range cntr.Labels {
+		if strings.HasPrefix(labelName, allowedDockerLabelPrefix) && labelValue != "" {
+			allowSpec := strings.ToUpper(strings.TrimPrefix(labelName, allowedDockerLabelPrefix))
+			if slices.Contains(methods, allowSpec) {
+				r, err := compileRegexp(labelValue, allowSpec, "docker container label")
+				if err != nil {
+					return nil, nil, err
+				}
+				allowedRequests[allowSpec] = r
+			} else if allowSpec == "BINDMOUNTFROM" {
+				var err error
+				allowedBindMounts, err = parseAllowedBindMounts(labelValue)
+				if err != nil {
+					return nil, nil, err
+				}
+			}
+		}
+	}
+	return allowedRequests, allowedBindMounts, nil
+}
+
+func updateAllowLists(cfg *Config) {
+	dockerClient, err := client.NewClientWithOpts(client.FromEnv)
+	if err != nil {
+		slog.Error("failed to create Docker client", "error", err)
+		return
+	}
+	defer dockerClient.Close()
+
+	ctx := context.Background()
+	filter := filters.NewArgs()
+	filter.Add("type", "container")
+	filter.Add("event", "start")
+	filter.Add("event", "die")
+	eventsChan, errChan := dockerClient.Events(ctx, events.ListOptions{Filters: filter})
+	if err != nil {
+		slog.Error("failed to subscribe to Docker event stream", "error", err)
+		return
+	}
+
+	select {
+	case event := <- eventsChan:
+		updateErr := updateAllowListsFromEvent(cfg, dockerClient, event)
+		if updateErr != nil {
+			slog.Error("error when updating allowlists", "error", updateErr)
+			return
+		}
+	case err := <- errChan:
+		slog.Error("received error from Docker event stream", "error", err)
+		return
+	}
+}
+
+func updateAllowListsFromEvent(cfg *Config, dockerClient *client.Client, event events.Message) error {
+	containerID := event.Actor.ID
+
+	switch event.Action {
+	case "start":
+		err := addAllowList(cfg, dockerClient, containerID)
+		if err != nil {
+			return err
+		}
+	case "die":
+		removeAllowList(cfg, containerID)
+	}
+	return nil
+}
+
+func addAllowList(cfg *Config, dockerClient *client.Client, containerID string) error {
+	cfg.AllowLists.Mutex.Lock()
+	defer cfg.AllowLists.Mutex.Unlock()
+
+	var methods []string
+	for _, rx := range mr {
+		methods = append(methods, rx.method)
+	}
+
+	filter := filters.NewArgs()
+	filter.Add("id", containerID)
+	containers, err := dockerClient.ContainerList(context.Background(), container.ListOptions{Filters: filter})
+	if err != nil {
+		return err
+	}
+	if len(containers) == 0 {
+		return fmt.Errorf("newly started container ID \"%s\" was not found", containerID)
+	}
+	cntr := containers[0]
+
+	allowedRequests, allowedBindMounts, err := extractLabelData(cntr, methods)
+
+	if len(allowedRequests) > 0 || len(allowedBindMounts) > 0 {
+		allowList := AllowList{
+			ID: cntr.ID,
+			AllowedRequests: allowedRequests,
+			AllowedBindMounts: allowedBindMounts,
+		}
+
+		for networkID, cntrNetwork := range cntr.NetworkSettings.Networks {
+			if slices.Contains(cfg.ProxyContainerNetworks, networkID) {
+				ipv4Address := cntrNetwork.IPAddress
+				if len(ipv4Address) > 0 {
+					cfg.AllowLists.ByIP[ipv4Address] = &allowList
+				}
+				ipv6Address := cntrNetwork.GlobalIPv6Address
+				if len(ipv6Address) > 0 {
+					cfg.AllowLists.ByIP[ipv6Address] = &allowList
+				}
+			}
+		}
+	}
+
+	return nil
+}
+
+func removeAllowList(cfg *Config, containerID string) {
+	cfg.AllowLists.Mutex.Lock()
+	defer cfg.AllowLists.Mutex.Unlock()
+
+	for ip, allowList := range cfg.AllowLists.ByIP {
+		if allowList.ID == containerID {
+			delete(cfg.AllowLists.ByIP, ip)
+		}
+	}
 }
