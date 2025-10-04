@@ -84,6 +84,12 @@ func main() {
 		// enables the use of labels to specify per-container allowlists
 		slog.Debug("no proxy container name provided")
 	}
+	if len(cfg.ProxyContainerNetworks) > 0 {
+		slog.Info("Proxy container networks provided", "proxycontainernetworks", cfg.ProxyContainerNetworks)
+	} else {
+		// we only log this on DEBUG level because the proxy container networks are used for per-container allowlists
+		slog.Debug("no proxy container networks detected")
+	}
 
 	// print request allowlist
 	if cfg.LogJSON {
@@ -96,6 +102,12 @@ func main() {
 		fmt.Printf("Request allowlist:\n   %-8s %s\n", "Method", "Regex")
 		for method, regex := range cfg.AllowLists.Default.AllowedRequests {
 			fmt.Printf("   %-8s %s\n", method, regex)
+		}
+		for ip, allowList := range cfg.AllowLists.ByIP {
+			fmt.Printf("Request allowlist for %s:\n   %-8s %s\n", ip, "Method", "Regex")
+			for method, regex := range allowList.AllowedRequests {
+				fmt.Printf("   %-8s %s\n", method, regex)
+			}
 		}
 	}
 
