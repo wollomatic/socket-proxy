@@ -1,6 +1,7 @@
 package config
 
 import (
+	"context"
 	"errors"
 	"flag"
 	"fmt"
@@ -11,9 +12,17 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
+	"sync"
+
+	"github.com/docker/docker/api/types/container"
+	"github.com/docker/docker/api/types/filters"
+	"github.com/docker/docker/client"
 )
+
+const allowedDockerLabelPrefix = "socket-proxy.allowed."
 
 var (
 	defaultAllowFrom                   = "127.0.0.1/32"         // allowed IPs to connect to the proxy
@@ -29,10 +38,23 @@ var (
 	defaultProxySocketEndpoint         = ""                     // empty string means no socket listener, but regular TCP listener
 	defaultProxySocketEndpointFileMode = uint(0o600)            // set the file mode of the unix socket endpoint
 	defaultAllowBindMountFrom          = ""                     // empty string means no bind mount restrictions
+	defaultProxyContainerName          = ""                     // socket-proxy Docker container name (empty string disables container labels for allowlists)
 )
 
+type AllowList struct {
+	ID                string                    // Container ID (empty for the default allow-list)
+	AllowedRequests   map[string]*regexp.Regexp // map of request methods to request path regex patterns (no requests allowed if empty)
+	AllowedBindMounts []string                  // list of from portion of allowed bind mounts (all bind mounts allowed if empty)
+}
+
+type AllowListRegistry struct {
+	Default *AllowList
+	ByIP     map[string]*AllowList
+	Mutex    sync.RWMutex
+}
+
 type Config struct {
-	AllowedRequests             map[string]*regexp.Regexp
+	AllowLists                  *AllowListRegistry
 	AllowFrom                   []string
 	AllowHealthcheck            bool
 	LogJSON                     bool
@@ -44,7 +66,8 @@ type Config struct {
 	SocketPath                  string
 	ProxySocketEndpoint         string
 	ProxySocketEndpointFileMode os.FileMode
-	AllowBindMountFrom          []string
+	ProxyContainerName          string
+	ProxyContainerNetworks      []string
 }
 
 // used for list of allowed requests
@@ -73,6 +96,8 @@ var mr = []methodRegex{
 func InitConfig() (*Config, error) {
 	var (
 		cfg                      Config
+		allowLists               AllowListRegistry
+		defaultAllowList         AllowList
 		allowFromString          string
 		listenIP                 string
 		proxyPort                uint
@@ -134,6 +159,9 @@ func InitConfig() (*Config, error) {
 	if val, ok := os.LookupEnv("SP_ALLOWBINDMOUNTFROM"); ok && val != "" {
 		defaultAllowBindMountFrom = val
 	}
+	if val, ok := os.LookupEnv("SP_PROXYCONTAINERNAME"); ok && val != "" {
+		defaultProxyContainerName = val
+	}
 
 	for i := range mr {
 		if val, ok := os.LookupEnv("SP_ALLOW_" + mr[i].method); ok && val != "" {
@@ -160,6 +188,7 @@ func InitConfig() (*Config, error) {
 	flag.StringVar(&cfg.ProxySocketEndpoint, "proxysocketendpoint", defaultProxySocketEndpoint, "unix socket endpoint (if set, used instead of the TCP listener)")
 	flag.UintVar(&endpointFileMode, "proxysocketendpointfilemode", defaultProxySocketEndpointFileMode, "set the file mode of the unix socket endpoint")
 	flag.StringVar(&allowBindMountFromString, "allowbindmountfrom", defaultAllowBindMountFrom, "allowed directories for bind mounts (comma-separated)")
+	flag.StringVar(&cfg.ProxyContainerName, "proxycontainername", defaultProxyContainerName, "socket-proxy Docker container name")
 	for i := range mr {
 		flag.StringVar(&mr[i].regexStringFromParam, "allow"+mr[i].method, "", "regex for "+mr[i].method+" requests (not set means method is not allowed)")
 	}
@@ -170,13 +199,11 @@ func InitConfig() (*Config, error) {
 
 	// parse allowBindMountFromString into AllowBindMountFrom slice and validate
 	if allowBindMountFromString != "" {
-		cfg.AllowBindMountFrom = strings.Split(allowBindMountFromString, ",")
-		for i, dir := range cfg.AllowBindMountFrom {
-			if !strings.HasPrefix(dir, "/") {
-				return nil, fmt.Errorf("bind mount directory must start with /: %q", dir)
-			}
-			cfg.AllowBindMountFrom[i] = filepath.Clean(dir)
+		allowedBindMounts, err := parseAllowedBindMounts(allowBindMountFromString)
+		if err != nil {
+			return nil, err
 		}
+		defaultAllowList.AllowedBindMounts = allowedBindMounts
 	}
 
 	// check listenIP and proxyPort
@@ -215,21 +242,148 @@ func InitConfig() (*Config, error) {
 	cfg.ProxySocketEndpointFileMode = os.FileMode(uint32(endpointFileMode))
 
 	// compile regexes for allowed requests
-	cfg.AllowedRequests = make(map[string]*regexp.Regexp)
+	defaultAllowList.AllowedRequests = make(map[string]*regexp.Regexp)
 	for _, rx := range mr {
 		if rx.regexStringFromParam != "" {
-			r, err := regexp.Compile("^" + rx.regexStringFromParam + "$")
+			r, err := compileRegexp(rx.regexStringFromParam, rx.method, "command line parameter")
 			if err != nil {
-				return nil, fmt.Errorf("invalid regex \"%s\" for method %s in command line parameter: %w", rx.regexStringFromParam, rx.method, err)
+				return nil, err
 			}
-			cfg.AllowedRequests[rx.method] = r
+			defaultAllowList.AllowedRequests[rx.method] = r
 		} else if rx.regexStringFromEnv != "" {
-			r, err := regexp.Compile("^" + rx.regexStringFromEnv + "$")
+			r, err := compileRegexp(rx.regexStringFromEnv, rx.method, "env variable")
 			if err != nil {
-				return nil, fmt.Errorf("invalid regex \"%s\" for method %s in env variable: %w", rx.regexStringFromEnv, rx.method, err)
+				return nil, err
 			}
-			cfg.AllowedRequests[rx.method] = r
+			defaultAllowList.AllowedRequests[rx.method] = r
 		}
 	}
+
+	cfg.AllowLists = &allowLists
+	cfg.AllowLists.Default = &defaultAllowList
+	if cfg.ProxySocketEndpoint == "" && cfg.ProxyContainerName != "" {
+		var err error
+		cfg.ProxyContainerNetworks, err = readProxyContainerNetworks(cfg.ProxyContainerName)
+		if err != nil {
+			return nil, err
+		}
+		cfg.AllowLists.ByIP, err = readContainerLabelAllowLists(cfg.ProxyContainerNetworks)
+		if err != nil {
+			return nil, err
+		}
+	}
+
 	return &cfg, nil
+}
+
+func compileRegexp(regex, method, configLocation string) (*regexp.Regexp, error) {
+	r, err := regexp.Compile("^" + regex + "$")
+	if err != nil {
+		return nil, fmt.Errorf("invalid regex \"%s\" for method %s in %s: %w", regex, method, configLocation, err)
+	}
+	return r, nil
+}
+
+func parseAllowedBindMounts(allowBindMountFromString string) ([]string, error) {
+	allowedBindMounts := strings.Split(allowBindMountFromString, ",")
+	for i, dir := range allowedBindMounts {
+		if !strings.HasPrefix(dir, "/") {
+			return nil, fmt.Errorf("bind mount directory must start with /: %q", dir)
+		}
+		allowedBindMounts[i] = filepath.Clean(dir)
+	}
+	return allowedBindMounts, nil
+}
+
+// return list of docker networks that the socket-proxy container is in
+func readProxyContainerNetworks(proxyContainerName string) ([]string, error) {
+	var networks []string
+	dockerClient, err := client.NewClientWithOpts(client.FromEnv)
+	if err != nil {
+		return nil, err
+	}
+	defer dockerClient.Close()
+
+	filter := filters.NewArgs()
+	filter.Add("name", proxyContainerName)
+	containers, err := dockerClient.ContainerList(context.Background(), container.ListOptions{Filters: filter})
+	if err != nil {
+		return nil, err
+	}
+	if len(containers) == 0 {
+		return nil, fmt.Errorf("socket-proxy container \"%s\" was not found", proxyContainerName)
+	}
+
+	for networkID, _ := range containers[0].NetworkSettings.Networks {
+		networks = append(networks, networkID)
+	}
+
+	return networks, nil
+}
+
+// return AllowListRegistry with allowlists specified by docker container labels
+func readContainerLabelAllowLists(networks []string) (map[string]*AllowList, error) {
+	allowListsByIP := make(map[string]*AllowList)
+
+	dockerClient, err := client.NewClientWithOpts(client.FromEnv)
+	if err != nil {
+		return nil, err
+	}
+	defer dockerClient.Close()
+
+	var methods []string
+	for _, rx := range mr {
+		methods = append(methods, rx.method)
+	}
+
+	ctx := context.Background()
+	for _, network := range networks {
+		filter := filters.NewArgs()
+		filter.Add("network", network)
+		containers, err := dockerClient.ContainerList(ctx, container.ListOptions{Filters: filter})
+		if err != nil {
+			return nil, err
+		}
+
+		for _, cntr := range containers {
+			allowedRequests := make(map[string]*regexp.Regexp)
+			allowedBindMounts := []string{}
+			for labelName, labelValue := range cntr.Labels {
+				if strings.HasPrefix(labelName, allowedDockerLabelPrefix) && labelValue != "" {
+					allowSpec := strings.ToUpper(strings.TrimPrefix(labelName, allowedDockerLabelPrefix))
+					if slices.Contains(methods, allowSpec) {
+						r, err := compileRegexp(labelValue, allowSpec, "docker container label")
+						if err != nil {
+							return nil, err
+						}
+						allowedRequests[allowSpec] = r
+					} else if allowSpec == "BINDMOUNTFROM" {
+						allowedBindMounts, err = parseAllowedBindMounts(labelValue)
+						if err != nil {
+							return nil, err
+						}
+					}
+				}
+			}
+
+			if len(allowedRequests) > 0 {
+				allowList := AllowList{
+					ID: cntr.ID,
+					AllowedRequests: allowedRequests,
+					AllowedBindMounts: allowedBindMounts,
+				}
+
+				ipv4Address := cntr.NetworkSettings.Networks[network].IPAddress
+				if len(ipv4Address) > 0 {
+					allowListsByIP[ipv4Address] = &allowList
+				}
+				ipv6Address := cntr.NetworkSettings.Networks[network].GlobalIPv6Address
+				if len(ipv6Address) > 0 {
+					allowListsByIP[ipv6Address] = &allowList
+				}
+			}
+		}
+	}
+
+	return allowListsByIP, nil
 }
