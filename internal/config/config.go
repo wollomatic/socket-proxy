@@ -22,7 +22,7 @@ import (
 	"github.com/docker/docker/client"
 )
 
-const allowedDockerLabelPrefix = "socket-proxy.allowed."
+const allowedDockerLabelPrefix = "socket-proxy.allow."
 
 var (
 	defaultAllowFrom                   = "127.0.0.1/32"         // allowed IPs to connect to the proxy
