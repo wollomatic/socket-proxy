@@ -13,7 +13,7 @@ As an additional benefit, socket-proxy can be used to examine the API calls of t
 The advantage over other solutions is the very slim container image (from-scratch-image) without any external dependencies (no OS, no packages, just the Go standard library).
 It is designed with security in mind, so there are secure defaults and an additional security layer (IP address-based access control) compared to most other solutions.
 
-The allowlist is configured for each HTTP method separately using the Go regexp syntax, allowing fine-grained control over the allowed HTTP methods.
+The allowlist is configured for each HTTP method separately using the Go regexp syntax, allowing fine-grained control over the allowed HTTP methods. In bridge network mode, each container that uses socket-proxy can be configured with its own allowlist.
 
 The source code is available on [GitHub: wollomatic/socket-proxy](https://github.com/wollomatic/socket-proxy)
 
@@ -116,19 +116,17 @@ Allowlists for both requests and bind mount restrictions can be specified for pa
 
 1. Set `-proxycontainername` or the environment variable `SP_PROXYCONTAINERNAME` to the name of the socket proxy container.
 2. Make sure that each container that will use the socket proxy is in a Docker network that the socket proxy container is also in.
-3. Use the same regex syntax for request allowlists and for bind mount restrictions that were discussed earlier, but for labels on each container that will use the socket proxy. Each label name will have the prefix of `socket-proxy.allow.`. For example:
+3. Use the same regex syntax for request allowlists and for bind mount restrictions that were discussed earlier, but for labels on each container that will use the socket proxy. Each label name will have the prefix of `socket-proxy.allow.`, with `socket-proxy.allow.bindmountfrom` for bind mount restrictions. For example:
 
 ``` compose.yaml
 services:
   traefik:
     # [...] see github.com/wollomatic/traefik-hardened for a full example
-    depends_on:
-      - dockerproxy
     networks:
       - traefik-servicenet # this is the common traefik network
       - docker-proxynet    # this should be only restricted to traefik and socket-proxy
     labels:
-      - 'socket-proxy.allow.get=.*' # allow all GET requests to the socket poroxy
+      - 'socket-proxy.allow.get=.*' # allow all GET requests to socket-proxy
 ```
 
 When this is used, it is not necessary to specify the container in `-allowfrom` as the presence of the allowlist labels will grant corresponding access.
