@@ -56,6 +56,9 @@ func main() {
 	}
 	slog.SetDefault(logger)
 
+	// setup non-default allowlists
+	go cfg.UpdateAllowLists()
+
 	// print configuration
 	slog.Info("starting socket-proxy", "version", version, "os", runtime.GOOS, "arch", runtime.GOARCH, "runtime", runtime.Version(), "URL", programURL)
 	if cfg.ProxySocketEndpoint == "" {
@@ -91,25 +94,8 @@ func main() {
 		slog.Debug("no proxy container networks detected")
 	}
 
-	// print request allowlist
-	if cfg.LogJSON {
-		for method, regex := range cfg.AllowLists.Default.AllowedRequests {
-			slog.Info("configured allowed request", "method", method, "regex", regex)
-		}
-	} else {
-		// don't use slog here, as we want to print the regexes as they are
-		// see https://github.com/wollomatic/socket-proxy/issues/11
-		fmt.Printf("Request allowlist:\n   %-8s %s\n", "Method", "Regex")
-		for method, regex := range cfg.AllowLists.Default.AllowedRequests {
-			fmt.Printf("   %-8s %s\n", method, regex)
-		}
-		for ip, allowList := range cfg.AllowLists.ByIP {
-			fmt.Printf("Request allowlist for %s:\n   %-8s %s\n", ip, "Method", "Regex")
-			for method, regex := range allowList.AllowedRequests {
-				fmt.Printf("   %-8s %s\n", method, regex)
-			}
-		}
-	}
+	// print default request allowlist
+	cfg.AllowLists.PrintDefault(cfg.LogJSON)
 
 	// check if the socket is available
 	err = checkSocketAvailability(cfg.SocketPath)
