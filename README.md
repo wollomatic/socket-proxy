@@ -110,6 +110,29 @@ Bind mount restrictions are applied to relevant Docker API endpoints and work wi
 
 **Note**: This feature only restricts bind mounts. Other mount types (volumes, tmpfs, etc.) are not affected by this restriction.
 
+#### Setting up per-container allowlists
+
+Allowlists for both requests and bind mount restrictions can be specified for particular containers. To do this:
+
+1. Set `-proxycontainername` or the environment variable `SP_PROXYCONTAINERNAME` to the name of the socket proxy container.
+2. Make sure that each container that will use the socket proxy is in a Docker network that the socket proxy container is also in.
+3. Use the same regex syntax for request allowlists and for bind mount restrictions that were discussed earlier, but for labels on each container that will use the socket proxy. Each label name will have the prefix of `socket-proxy.allow.`. For example:
+
+``` compose.yaml
+services:
+  traefik:
+    # [...] see github.com/wollomatic/traefik-hardened for a full example
+    depends_on:
+      - dockerproxy
+    networks:
+      - traefik-servicenet # this is the common traefik network
+      - docker-proxynet    # this should be only restricted to traefik and socket-proxy
+    labels:
+      - 'socket-proxy.allow.get=.*' # allow all GET requests to the socket poroxy
+```
+
+When this is used, it is not necessary to specify the container in `-allowfrom` as the presence of the allowlist labels will grant corresponding access.
+
 ### Container health check
 
 Health checks are disabled by default. As the socket-proxy container may not be exposed to a public network, a separate health check binary is included in the container image. To activate the health check, the `-allowhealthcheck` parameter or the environment variable `SP_ALLOWHEALTHCHECK=true` must be set. Then, a health check is possible for example with the following docker-compose snippet:
@@ -212,6 +235,7 @@ socket-proxy can be configured via command line parameters or via environment va
 | `-watchdoginterval`            | `SP_WATCHDOGINTERVAL`            | `0`                    | Check for socket availability every x seconds (disable checks, if not set or value is 0)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
 | `-proxysocketendpoint`         | `SP_PROXYSOCKETENDPOINT`         | (not set)              | Proxy to the given unix socket instead of a TCP port                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
 | `-proxysocketendpointfilemode` | `SP_PROXYSOCKETENDPOINTFILEMODE` | `0600`                 | Explicitly set the file mode for the filtered unix socket endpoint (only useful with `-proxysocketendpoint`)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| `-proxycontainername`          | `SP_PROXYCONTAINERNAME         ` | (not set)              | Provides the name of the socket proxy container to enable per-container allowlists specified by Docker container labels (not available with `-proxysocketendpoint`)                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
 
 ### Changelog
 
