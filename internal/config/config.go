@@ -42,19 +42,6 @@ var (
 	defaultProxyContainerName          = ""                     // socket-proxy Docker container name (empty string disables container labels for allowlists)
 )
 
-type AllowList struct {
-	ID                string                    // Container ID (empty for the default allowlist)
-	AllowedRequests   map[string]*regexp.Regexp // map of request methods to request path regex patterns (no requests allowed if empty)
-	AllowedBindMounts []string                  // list of from portion of allowed bind mounts (all bind mounts allowed if empty)
-}
-
-type AllowListRegistry struct {
-	Default  *AllowList            // default allowlist
-	ByIP     map[string]*AllowList // map container IP address to allowlist for that container
-	Networks []string              // names of networks in which socket proxy access is allowed for non-default allowlists
-	Mutex    sync.RWMutex          // mutex to control read/write of ByIP
-}
-
 type Config struct {
 	AllowLists                  *AllowListRegistry
 	AllowFrom                   []string
@@ -69,6 +56,19 @@ type Config struct {
 	ProxySocketEndpoint         string
 	ProxySocketEndpointFileMode os.FileMode
 	ProxyContainerName          string
+}
+
+type AllowListRegistry struct {
+	Default  *AllowList            // default allowlist
+	ByIP     map[string]*AllowList // map container IP address to allowlist for that container
+	Networks []string              // names of networks in which socket proxy access is allowed for non-default allowlists
+	Mutex    sync.RWMutex          // mutex to control read/write of ByIP
+}
+
+type AllowList struct {
+	ID                string                    // Container ID (empty for the default allowlist)
+	AllowedRequests   map[string]*regexp.Regexp // map of request methods to request path regex patterns (no requests allowed if empty)
+	AllowedBindMounts []string                  // list of from portion of allowed bind mounts (all bind mounts allowed if empty)
 }
 
 // used for list of allowed requests
@@ -274,7 +274,7 @@ func InitConfig() (*Config, error) {
 	return &cfg, nil
 }
 
-// Populate the ByIP allowlists then keep them updated
+// populate the ByIP allowlists then keep them updated
 func (cfg *Config) UpdateAllowLists() {
 	dockerClient, err := client.NewClientWithOpts(client.FromEnv)
 	if err != nil {
@@ -324,50 +324,18 @@ func (cfg *Config) UpdateAllowLists() {
 	}
 }
 
-func compileRegexp(regex, method, configLocation string) (*regexp.Regexp, error) {
-	r, err := regexp.Compile("^" + regex + "$")
-	if err != nil {
-		return nil, fmt.Errorf("invalid regex \"%s\" for method %s in %s: %w", regex, method, configLocation, err)
-	}
-	return r, nil
+// print the default allowlist
+func (allowLists *AllowListRegistry) PrintDefault(logJSON bool) {
+	allowLists.Default.Print("", logJSON)
 }
 
-func parseAllowedBindMounts(allowBindMountFromString string) ([]string, error) {
-	allowedBindMounts := strings.Split(allowBindMountFromString, ",")
-	for i, dir := range allowedBindMounts {
-		if !strings.HasPrefix(dir, "/") {
-			return nil, fmt.Errorf("bind mount directory must start with /: %q", dir)
-		}
-		allowedBindMounts[i] = filepath.Clean(dir)
+// print the non-default allowlists
+func (allowLists *AllowListRegistry) PrintByIP(logJSON bool) {
+	allowLists.Mutex.RLock()
+	defer allowLists.Mutex.RUnlock()
+	for ip, allowList := range allowLists.ByIP {
+		allowList.Print(ip, logJSON)
 	}
-	return allowedBindMounts, nil
-}
-
-// return list of docker networks that the socket-proxy container is in
-func listSocketProxyNetworks(proxyContainerName string) ([]string, error) {
-	var networks []string
-
-	dockerClient, err := client.NewClientWithOpts(client.FromEnv)
-	if err != nil {
-		return nil, err
-	}
-	defer dockerClient.Close()
-
-	filter := filters.NewArgs()
-	filter.Add("name", proxyContainerName)
-	containers, err := dockerClient.ContainerList(context.Background(), container.ListOptions{Filters: filter})
-	if err != nil {
-		return nil, err
-	}
-	if len(containers) == 0 {
-		return nil, fmt.Errorf("socket-proxy container \"%s\" was not found", proxyContainerName)
-	}
-
-	for networkID, _ := range containers[0].NetworkSettings.Networks {
-		networks = append(networks, networkID)
-	}
-
-	return networks, nil
 }
 
 // initialise allowlist registry ByIP allowlists
@@ -419,31 +387,6 @@ func (allowLists *AllowListRegistry) initByIP(dockerClient *client.Client) error
 	}
 
 	return nil
-}
-
-// extract Docker container allowlist label data from the container summary
-func extractLabelData(cntr container.Summary, methods []string) (map[string]*regexp.Regexp, []string, error) {
-	allowedRequests := make(map[string]*regexp.Regexp)
-	allowedBindMounts := []string{}
-	for labelName, labelValue := range cntr.Labels {
-		if strings.HasPrefix(labelName, allowedDockerLabelPrefix) && labelValue != "" {
-			allowSpec := strings.ToUpper(strings.TrimPrefix(labelName, allowedDockerLabelPrefix))
-			if slices.Contains(methods, allowSpec) {
-				r, err := compileRegexp(labelValue, allowSpec, "docker container label")
-				if err != nil {
-					return nil, nil, err
-				}
-				allowedRequests[allowSpec] = r
-			} else if allowSpec == "BINDMOUNTFROM" {
-				var err error
-				allowedBindMounts, err = parseAllowedBindMounts(labelValue)
-				if err != nil {
-					return nil, nil, err
-				}
-			}
-		}
-	}
-	return allowedRequests, allowedBindMounts, nil
 }
 
 // update the allowlist registry based on the Docker event
@@ -528,18 +471,8 @@ func (allowLists *AllowListRegistry) remove(containerID string) {
 	}
 }
 
-func (allowLists *AllowListRegistry) PrintDefault(logJSON bool) {
-	allowLists.Default.Print("", logJSON)
-}
-
-func (allowLists *AllowListRegistry) PrintByIP(logJSON bool) {
-	allowLists.Mutex.RLock()
-	defer allowLists.Mutex.RUnlock()
-	for ip, allowList := range allowLists.ByIP {
-		allowList.Print(ip, logJSON)
-	}
-}
-
+// print the allowlist, including the IP address of the associated container if it is not empty,
+// and in JSON format if logJSON is true
 func (allowList *AllowList) Print(ip string, logJSON bool) {
 	if logJSON {
 		if ip == "" {
@@ -563,4 +496,75 @@ func (allowList *AllowList) Print(ip string, logJSON bool) {
 			fmt.Printf("   %-8s %s\n", method, regex)
 		}
 	}
+}
+
+// compile allowed requests regex pattern
+func compileRegexp(regex, method, configLocation string) (*regexp.Regexp, error) {
+	r, err := regexp.Compile("^" + regex + "$")
+	if err != nil {
+		return nil, fmt.Errorf("invalid regex \"%s\" for method %s in %s: %w", regex, method, configLocation, err)
+	}
+	return r, nil
+}
+
+// parse bind mount from string into list of allowed bind mounts
+func parseAllowedBindMounts(allowBindMountFromString string) ([]string, error) {
+	allowedBindMounts := strings.Split(allowBindMountFromString, ",")
+	for i, dir := range allowedBindMounts {
+		if !strings.HasPrefix(dir, "/") {
+			return nil, fmt.Errorf("bind mount directory must start with /: %q", dir)
+		}
+		allowedBindMounts[i] = filepath.Clean(dir)
+	}
+	return allowedBindMounts, nil
+}
+
+// return list of docker networks that the socket-proxy container is in
+func listSocketProxyNetworks(proxyContainerName string) ([]string, error) {
+	dockerClient, err := client.NewClientWithOpts(client.FromEnv)
+	if err != nil {
+		return nil, err
+	}
+	defer dockerClient.Close()
+
+	filter := filters.NewArgs()
+	filter.Add("name", proxyContainerName)
+	containers, err := dockerClient.ContainerList(context.Background(), container.ListOptions{Filters: filter})
+	if err != nil {
+		return nil, err
+	}
+	if len(containers) == 0 {
+		return nil, fmt.Errorf("socket-proxy container \"%s\" was not found", proxyContainerName)
+	}
+
+	var networks []string
+	for networkID, _ := range containers[0].NetworkSettings.Networks {
+		networks = append(networks, networkID)
+	}
+	return networks, nil
+}
+
+// extract Docker container allowlist label data from the container summary
+func extractLabelData(cntr container.Summary, methods []string) (map[string]*regexp.Regexp, []string, error) {
+	allowedRequests := make(map[string]*regexp.Regexp)
+	allowedBindMounts := []string{}
+	for labelName, labelValue := range cntr.Labels {
+		if strings.HasPrefix(labelName, allowedDockerLabelPrefix) && labelValue != "" {
+			allowSpec := strings.ToUpper(strings.TrimPrefix(labelName, allowedDockerLabelPrefix))
+			if slices.Contains(methods, allowSpec) {
+				r, err := compileRegexp(labelValue, allowSpec, "docker container label")
+				if err != nil {
+					return nil, nil, err
+				}
+				allowedRequests[allowSpec] = r
+			} else if allowSpec == "BINDMOUNTFROM" {
+				var err error
+				allowedBindMounts, err = parseAllowedBindMounts(labelValue)
+				if err != nil {
+					return nil, nil, err
+				}
+			}
+		}
+	}
+	return allowedRequests, allowedBindMounts, nil
 }
