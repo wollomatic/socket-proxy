@@ -49,8 +49,9 @@ type AllowList struct {
 }
 
 type AllowListRegistry struct {
-	Default *AllowList             // default allowlist
+	Default  *AllowList            // default allowlist
 	ByIP     map[string]*AllowList // map container IP address to allowlist for that container
+	Networks []string              // names of networks in which socket proxy access is allowed for non-default allowlists
 	Mutex    sync.RWMutex          // mutex to control read/write of ByIP
 }
 
@@ -68,7 +69,6 @@ type Config struct {
 	ProxySocketEndpoint         string
 	ProxySocketEndpointFileMode os.FileMode
 	ProxyContainerName          string
-	ProxyContainerNetworks      []string
 }
 
 // used for list of allowed requests
@@ -259,16 +259,17 @@ func InitConfig() (*Config, error) {
 			defaultAllowList.AllowedRequests[rx.method] = r
 		}
 	}
+	allowLists.Default = &defaultAllowList
 
-	cfg.AllowLists = &allowLists
-	cfg.AllowLists.Default = &defaultAllowList
 	if cfg.ProxySocketEndpoint == "" && cfg.ProxyContainerName != "" {
 		var err error
-		cfg.ProxyContainerNetworks, err = readProxyContainerNetworks(cfg.ProxyContainerName)
+		allowLists.Networks, err = listSocketProxyNetworks(cfg.ProxyContainerName)
 		if err != nil {
 			return nil, err
 		}
 	}
+
+	cfg.AllowLists = &allowLists
 
 	return &cfg, nil
 }
@@ -282,14 +283,11 @@ func (cfg *Config) UpdateAllowLists() {
 	}
 	defer dockerClient.Close()
 
-	allowLists, err := initByIPAllowLists(dockerClient, cfg.ProxyContainerNetworks)
+	err = cfg.AllowLists.initByIP(dockerClient)
 	if err != nil {
 		slog.Error("failed to initialise non-default allowlists", "error", err)
 		return
 	}
-	cfg.AllowLists.Mutex.Lock()
-	cfg.AllowLists.ByIP = allowLists
-	cfg.AllowLists.Mutex.Unlock()
 	slog.Debug("initialised non-default allowlists")
 	// print non-default request allowlists
 	cfg.AllowLists.PrintByIP(cfg.LogJSON)
@@ -308,7 +306,7 @@ func (cfg *Config) UpdateAllowLists() {
 
 	select {
 	case event := <- eventsChan:
-		addedIPs, updateErr := cfg.AllowLists.updateFromEvent(dockerClient, event, cfg.ProxyContainerNetworks)
+		addedIPs, updateErr := cfg.AllowLists.updateFromEvent(dockerClient, event)
 		if updateErr != nil {
 			slog.Error("error when updating allowlists", "error", updateErr)
 			return
@@ -346,7 +344,7 @@ func parseAllowedBindMounts(allowBindMountFromString string) ([]string, error) {
 }
 
 // return list of docker networks that the socket-proxy container is in
-func readProxyContainerNetworks(proxyContainerName string) ([]string, error) {
+func listSocketProxyNetworks(proxyContainerName string) ([]string, error) {
 	var networks []string
 
 	dockerClient, err := client.NewClientWithOpts(client.FromEnv)
@@ -372,28 +370,33 @@ func readProxyContainerNetworks(proxyContainerName string) ([]string, error) {
 	return networks, nil
 }
 
-// return initial ByIP allowlists
-func initByIPAllowLists(dockerClient *client.Client, networks []string) (map[string]*AllowList, error) {
-	allowListsByIP := make(map[string]*AllowList)
-
+// initialise allowlist registry ByIP allowlists
+func (allowLists *AllowListRegistry) initByIP(dockerClient *client.Client) error {
 	var methods []string
 	for _, rx := range mr {
 		methods = append(methods, rx.method)
 	}
 
+	allowLists.Mutex.Lock()
+	defer allowLists.Mutex.Unlock()
+
+	allowLists.ByIP = make(map[string]*AllowList)
+
 	ctx := context.Background()
-	for _, network := range networks {
+	for _, network := range allowLists.Networks {
 		filter := filters.NewArgs()
 		filter.Add("network", network)
 		containers, err := dockerClient.ContainerList(ctx, container.ListOptions{Filters: filter})
 		if err != nil {
-			return nil, err
+			allowLists.ByIP = nil
+			return err
 		}
 
 		for _, cntr := range containers {
 			allowedRequests, allowedBindMounts, err := extractLabelData(cntr, methods)
 			if err != nil {
-				return nil, err
+				allowLists.ByIP = nil
+				return err
 			}
 
 			if len(allowedRequests) > 0 || len(allowedBindMounts) > 0 {
@@ -405,17 +408,17 @@ func initByIPAllowLists(dockerClient *client.Client, networks []string) (map[str
 
 				ipv4Address := cntr.NetworkSettings.Networks[network].IPAddress
 				if len(ipv4Address) > 0 {
-					allowListsByIP[ipv4Address] = &allowList
+					allowLists.ByIP[ipv4Address] = &allowList
 				}
 				ipv6Address := cntr.NetworkSettings.Networks[network].GlobalIPv6Address
 				if len(ipv6Address) > 0 {
-					allowListsByIP[ipv6Address] = &allowList
+					allowLists.ByIP[ipv6Address] = &allowList
 				}
 			}
 		}
 	}
 
-	return allowListsByIP, nil
+	return nil
 }
 
 // extract Docker container allowlist label data from the container summary
@@ -445,13 +448,13 @@ func extractLabelData(cntr container.Summary, methods []string) (map[string]*reg
 
 // update the allowlist registry based on the Docker event
 func (allowLists *AllowListRegistry) updateFromEvent(
-	dockerClient *client.Client, event events.Message, socketProxyNetworks []string,
+	dockerClient *client.Client, event events.Message,
 ) ([]string, error) {
 	containerID := event.Actor.ID
 
 	switch event.Action {
 	case "start":
-		addedIPs, err := allowLists.add(dockerClient, containerID, socketProxyNetworks)
+		addedIPs, err := allowLists.add(dockerClient, containerID)
 		if err != nil {
 			return nil, err
 		}
@@ -464,9 +467,7 @@ func (allowLists *AllowListRegistry) updateFromEvent(
 
 // add the allowlist for the container with the given ID to the allowlist registry
 // if it has at least one socket-proxy allow label and is in a same network as the socket-proxy
-func (allowLists *AllowListRegistry) add(
-	dockerClient *client.Client, containerID string, socketProxyNetworks []string,
-) ([]string, error) {
+func (allowLists *AllowListRegistry) add(dockerClient *client.Client, containerID string) ([]string, error) {
 	allowLists.Mutex.Lock()
 	defer allowLists.Mutex.Unlock()
 
@@ -497,7 +498,7 @@ func (allowLists *AllowListRegistry) add(
 		}
 
 		for networkID, cntrNetwork := range cntr.NetworkSettings.Networks {
-			if slices.Contains(socketProxyNetworks, networkID) {
+			if slices.Contains(allowLists.Networks, networkID) {
 				ipv4Address := cntrNetwork.IPAddress
 				if len(ipv4Address) > 0 {
 					allowLists.ByIP[ipv4Address] = &allowList
