@@ -276,6 +276,8 @@ func InitConfig() (*Config, error) {
 
 // populate the byIP allowlists then keep them updated
 func (cfg *Config) UpdateAllowLists() {
+	ctx := context.Background()
+
 	dockerClient, err := client.NewClientWithOpts(client.FromEnv)
 	if err != nil {
 		slog.Error("failed to create Docker client", "error", err)
@@ -283,7 +285,7 @@ func (cfg *Config) UpdateAllowLists() {
 	}
 	defer dockerClient.Close()
 
-	err = cfg.AllowLists.initByIP(dockerClient)
+	err = cfg.AllowLists.initByIP(ctx, dockerClient)
 	if err != nil {
 		slog.Error("failed to initialise non-default allowlists", "error", err)
 		return
@@ -292,38 +294,43 @@ func (cfg *Config) UpdateAllowLists() {
 	// print non-default request allowlists
 	cfg.AllowLists.PrintByIP(cfg.LogJSON)
 
-	ctx := context.Background()
 	filter := filters.NewArgs()
 	filter.Add("type", "container")
 	filter.Add("event", "start")
 	filter.Add("event", "restart")
 	filter.Add("event", "die")
 	eventsChan, errChan := dockerClient.Events(ctx, events.ListOptions{Filters: filter})
-	if err != nil {
-		slog.Error("failed to subscribe to Docker event stream", "error", err)
-		return
-	}
 	slog.Debug("subscribed to Docker event stream to update allowlists")
 
 	for {
 		select {
-		case event := <- eventsChan:
-			slog.Debug("received Docker container event", "action", event.Action, "containerID", event.Actor.ID)
-			addedIPs, updateErr := cfg.AllowLists.updateFromEvent(dockerClient, event)
-			if updateErr != nil {
-				slog.Error("error when updating allowlists", "error", updateErr)
+		case event, ok := <-eventsChan:
+			if !ok {
+				slog.Info("Docker event stream closed")
 				return
 			}
-			if len(addedIPs) > 0 {
-				cfg.AllowLists.mutex.RLock()
-				for _, ip := range addedIPs {
-					cfg.AllowLists.byIP[ip].Print(ip, cfg.LogJSON)
-				}
-				cfg.AllowLists.mutex.RUnlock()
+			slog.Debug("received Docker container event", "action", event.Action, "containerID", event.Actor.ID)
+			addedIPs, removedIPs, updateErr := cfg.AllowLists.updateFromEvent(ctx, dockerClient, event)
+			if updateErr != nil {
+				slog.Warn("failed to update allowlists from container event", "error", updateErr)
+				continue
 			}
-		case err := <- errChan:
-			slog.Error("received error from Docker event stream", "error", err)
-			return
+			for _, ip := range addedIPs {
+				cfg.AllowLists.mutex.RLock()
+				allowList := cfg.AllowLists.byIP[ip]
+				cfg.AllowLists.mutex.RUnlock()
+				if allowList != nil {
+					allowList.Print(ip, cfg.LogJSON)
+				}
+			}
+			for _, ip := range removedIPs {
+				slog.Info("removed allowlist for container", "ip", ip)
+			}
+		case err := <-errChan:
+			if err != nil {
+				slog.Error("received error from Docker event stream", "error", err)
+				return
+			}
 		}
 	}
 }
@@ -351,7 +358,7 @@ func (allowLists *AllowListRegistry) FindByIP(ip string) (*AllowList, bool) {
 }
 
 // initialise allowlist registry byIP allowlists
-func (allowLists *AllowListRegistry) initByIP(dockerClient *client.Client) error {
+func (allowLists *AllowListRegistry) initByIP(ctx context.Context, dockerClient *client.Client) error {
 	var methods []string
 	for _, rx := range mr {
 		methods = append(methods, rx.method)
@@ -362,7 +369,6 @@ func (allowLists *AllowListRegistry) initByIP(dockerClient *client.Client) error
 
 	allowLists.byIP = make(map[string]*AllowList)
 
-	ctx := context.Background()
 	for _, network := range allowLists.Networks {
 		filter := filters.NewArgs()
 		filter.Add("network", network)
@@ -403,28 +409,32 @@ func (allowLists *AllowListRegistry) initByIP(dockerClient *client.Client) error
 
 // update the allowlist registry based on the Docker event
 func (allowLists *AllowListRegistry) updateFromEvent(
-	dockerClient *client.Client, event events.Message,
-) ([]string, error) {
+	ctx context.Context, dockerClient *client.Client, event events.Message,
+) ([]string, []string, error) {
 	containerID := event.Actor.ID
+	var (
+		addedIPs   []string
+		removedIPs []string
+		err        error
+	)
 
 	switch event.Action {
-	case "restart":
-		fallthrough
-	case "start":
-		addedIPs, err := allowLists.add(dockerClient, containerID)
+	case "start", "restart":
+		addedIPs, err = allowLists.add(ctx, dockerClient, containerID)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
-		return addedIPs, nil
 	case "die":
-		allowLists.remove(containerID)
+		removedIPs = allowLists.remove(containerID)
 	}
-	return nil, nil
+	return addedIPs, removedIPs, nil
 }
 
 // add the allowlist for the container with the given ID to the allowlist registry
 // if it has at least one socket-proxy allow label and is in a same network as the socket-proxy
-func (allowLists *AllowListRegistry) add(dockerClient *client.Client, containerID string) ([]string, error) {
+func (allowLists *AllowListRegistry) add(
+	ctx context.Context, dockerClient *client.Client, containerID string,
+) ([]string, error) {
 	var methods []string
 	for _, rx := range mr {
 		methods = append(methods, rx.method)
@@ -432,7 +442,7 @@ func (allowLists *AllowListRegistry) add(dockerClient *client.Client, containerI
 
 	filter := filters.NewArgs()
 	filter.Add("id", containerID)
-	containers, err := dockerClient.ContainerList(context.Background(), container.ListOptions{Filters: filter})
+	containers, err := dockerClient.ContainerList(ctx, container.ListOptions{Filters: filter})
 	if err != nil {
 		return nil, err
 	}
@@ -474,15 +484,18 @@ func (allowLists *AllowListRegistry) add(dockerClient *client.Client, containerI
 }
 
 // remove allowlists having the given container ID from the allowlist registry
-func (allowLists *AllowListRegistry) remove(containerID string) {
+func (allowLists *AllowListRegistry) remove(containerID string) []string {
 	allowLists.mutex.Lock()
 	defer allowLists.mutex.Unlock()
 
+	var removedIPs []string
 	for ip, allowList := range allowLists.byIP {
 		if allowList.ID == containerID {
 			delete(allowLists.byIP, ip)
+			removedIPs = append(removedIPs, ip)
 		}
 	}
+	return removedIPs
 }
 
 // print the allowlist, including the IP address of the associated container if it is not empty,
