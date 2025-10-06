@@ -404,6 +404,8 @@ func (allowLists *AllowListRegistry) updateFromEvent(
 	containerID := event.Actor.ID
 
 	switch event.Action {
+	case "restart":
+		fallthrough
 	case "start":
 		addedIPs, err := allowLists.add(dockerClient, containerID)
 		if err != nil {
