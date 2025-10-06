@@ -57,7 +57,9 @@ func main() {
 	slog.SetDefault(logger)
 
 	// setup non-default allowlists
-	go cfg.UpdateAllowLists()
+	if cfg.ProxySocketEndpoint == "" && cfg.ProxyContainerName != "" {
+		go cfg.UpdateAllowLists()
+	}
 
 	// print configuration
 	slog.Info("starting socket-proxy", "version", version, "os", runtime.GOOS, "arch", runtime.GOARCH, "runtime", runtime.Version(), "URL", programURL)
