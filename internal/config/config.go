@@ -296,6 +296,7 @@ func (cfg *Config) UpdateAllowLists() {
 	filter := filters.NewArgs()
 	filter.Add("type", "container")
 	filter.Add("event", "start")
+	filter.Add("event", "restart")
 	filter.Add("event", "die")
 	eventsChan, errChan := dockerClient.Events(ctx, events.ListOptions{Filters: filter})
 	if err != nil {
@@ -405,14 +406,17 @@ func (allowLists *AllowListRegistry) updateFromEvent(
 
 	switch event.Action {
 	case "restart":
+		slog.Debug("process container restart event", "containerID", containerID)
 		fallthrough
 	case "start":
+		slog.Debug("process container start event", "containerID", containerID)
 		addedIPs, err := allowLists.add(dockerClient, containerID)
 		if err != nil {
 			return nil, err
 		}
 		return addedIPs, nil
 	case "die":
+		slog.Debug("process container die event", "containerID", containerID)
 		allowLists.remove(containerID)
 	}
 	return nil, nil
