@@ -324,7 +324,7 @@ func (cfg *Config) UpdateAllowLists() {
 				}
 			}
 			for _, ip := range removedIPs {
-				slog.Info("removed allowlist for container", "ip", ip)
+				slog.Info("removed allowlist for container", "containerID", event.Actor.ID, "ip", ip)
 			}
 		case err := <-errChan:
 			if err != nil {
@@ -447,11 +447,15 @@ func (allowLists *AllowListRegistry) add(
 		return nil, err
 	}
 	if len(containers) == 0 {
-		return nil, fmt.Errorf("newly started container ID \"%s\" was not found", containerID)
+		slog.Warn("container not found, may have stopped quickly", "containerID", containerID)
+		return nil, nil
 	}
 	cntr := containers[0]
 
 	allowedRequests, allowedBindMounts, err := extractLabelData(cntr, methods)
+	if err != nil {
+		return nil, err
+	}
 
 	var ips []string
 	if len(allowedRequests) > 0 || len(allowedBindMounts) > 0 {
@@ -595,3 +599,4 @@ func extractLabelData(cntr container.Summary, methods []string) (map[string]*reg
 	}
 	return allowedRequests, allowedBindMounts, nil
 }
+
