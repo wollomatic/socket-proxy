@@ -305,23 +305,26 @@ func (cfg *Config) UpdateAllowLists() {
 	}
 	slog.Debug("subscribed to Docker event stream to update allowlists")
 
-	select {
-	case event := <- eventsChan:
-		addedIPs, updateErr := cfg.AllowLists.updateFromEvent(dockerClient, event)
-		if updateErr != nil {
-			slog.Error("error when updating allowlists", "error", updateErr)
+	for {
+		select {
+		case event := <- eventsChan:
+			slog.Debug("received Docker container event", "action", event.Action, "containerID", event.Actor.ID)
+			addedIPs, updateErr := cfg.AllowLists.updateFromEvent(dockerClient, event)
+			if updateErr != nil {
+				slog.Error("error when updating allowlists", "error", updateErr)
+				return
+			}
+			if len(addedIPs) > 0 {
+				cfg.AllowLists.mutex.RLock()
+				for _, ip := range addedIPs {
+					cfg.AllowLists.byIP[ip].Print(ip, cfg.LogJSON)
+				}
+				cfg.AllowLists.mutex.RUnlock()
+			}
+		case err := <- errChan:
+			slog.Error("received error from Docker event stream", "error", err)
 			return
 		}
-		if len(addedIPs) > 0 {
-			cfg.AllowLists.mutex.RLock()
-			for _, ip := range addedIPs {
-				cfg.AllowLists.byIP[ip].Print(ip, cfg.LogJSON)
-			}
-			cfg.AllowLists.mutex.RUnlock()
-		}
-	case err := <- errChan:
-		slog.Error("received error from Docker event stream", "error", err)
-		return
 	}
 }
 
@@ -406,17 +409,14 @@ func (allowLists *AllowListRegistry) updateFromEvent(
 
 	switch event.Action {
 	case "restart":
-		slog.Debug("process container restart event", "containerID", containerID)
 		fallthrough
 	case "start":
-		slog.Debug("process container start event", "containerID", containerID)
 		addedIPs, err := allowLists.add(dockerClient, containerID)
 		if err != nil {
 			return nil, err
 		}
 		return addedIPs, nil
 	case "die":
-		slog.Debug("process container die event", "containerID", containerID)
 		allowLists.remove(containerID)
 	}
 	return nil, nil
