@@ -59,10 +59,10 @@ type Config struct {
 }
 
 type AllowListRegistry struct {
-	Default  *AllowList            // default allowlist
-	ByIP     map[string]*AllowList // map container IP address to allowlist for that container
+	mutex    sync.RWMutex          // mutex to control read/write of byIP
 	Networks []string              // names of networks in which socket proxy access is allowed for non-default allowlists
-	Mutex    sync.RWMutex          // mutex to control read/write of ByIP
+	Default  *AllowList            // default allowlist
+	byIP     map[string]*AllowList // map container IP address to allowlist for that container
 }
 
 type AllowList struct {
@@ -274,7 +274,7 @@ func InitConfig() (*Config, error) {
 	return &cfg, nil
 }
 
-// populate the ByIP allowlists then keep them updated
+// populate the byIP allowlists then keep them updated
 func (cfg *Config) UpdateAllowLists() {
 	dockerClient, err := client.NewClientWithOpts(client.FromEnv)
 	if err != nil {
@@ -312,11 +312,11 @@ func (cfg *Config) UpdateAllowLists() {
 			return
 		}
 		if len(addedIPs) > 0 {
-			cfg.AllowLists.Mutex.RLock()
+			cfg.AllowLists.mutex.RLock()
 			for _, ip := range addedIPs {
-				cfg.AllowLists.ByIP[ip].Print(ip, cfg.LogJSON)
+				cfg.AllowLists.byIP[ip].Print(ip, cfg.LogJSON)
 			}
-			cfg.AllowLists.Mutex.RUnlock()
+			cfg.AllowLists.mutex.RUnlock()
 		}
 	case err := <- errChan:
 		slog.Error("received error from Docker event stream", "error", err)
@@ -331,24 +331,32 @@ func (allowLists *AllowListRegistry) PrintDefault(logJSON bool) {
 
 // print the non-default allowlists
 func (allowLists *AllowListRegistry) PrintByIP(logJSON bool) {
-	allowLists.Mutex.RLock()
-	defer allowLists.Mutex.RUnlock()
-	for ip, allowList := range allowLists.ByIP {
+	allowLists.mutex.RLock()
+	defer allowLists.mutex.RUnlock()
+	for ip, allowList := range allowLists.byIP {
 		allowList.Print(ip, logJSON)
 	}
 }
 
-// initialise allowlist registry ByIP allowlists
+// return the allowlist corresponding to the given IP address if found
+func (allowLists *AllowListRegistry) FindByIP(ip string) (*AllowList, bool) {
+	allowLists.mutex.RLock()
+	defer allowLists.mutex.RUnlock()
+	allowList, found := allowLists.byIP[ip]
+	return allowList, found
+}
+
+// initialise allowlist registry byIP allowlists
 func (allowLists *AllowListRegistry) initByIP(dockerClient *client.Client) error {
 	var methods []string
 	for _, rx := range mr {
 		methods = append(methods, rx.method)
 	}
 
-	allowLists.Mutex.Lock()
-	defer allowLists.Mutex.Unlock()
+	allowLists.mutex.Lock()
+	defer allowLists.mutex.Unlock()
 
-	allowLists.ByIP = make(map[string]*AllowList)
+	allowLists.byIP = make(map[string]*AllowList)
 
 	ctx := context.Background()
 	for _, network := range allowLists.Networks {
@@ -356,14 +364,14 @@ func (allowLists *AllowListRegistry) initByIP(dockerClient *client.Client) error
 		filter.Add("network", network)
 		containers, err := dockerClient.ContainerList(ctx, container.ListOptions{Filters: filter})
 		if err != nil {
-			allowLists.ByIP = nil
+			allowLists.byIP = nil
 			return err
 		}
 
 		for _, cntr := range containers {
 			allowedRequests, allowedBindMounts, err := extractLabelData(cntr, methods)
 			if err != nil {
-				allowLists.ByIP = nil
+				allowLists.byIP = nil
 				return err
 			}
 
@@ -376,11 +384,11 @@ func (allowLists *AllowListRegistry) initByIP(dockerClient *client.Client) error
 
 				ipv4Address := cntr.NetworkSettings.Networks[network].IPAddress
 				if len(ipv4Address) > 0 {
-					allowLists.ByIP[ipv4Address] = &allowList
+					allowLists.byIP[ipv4Address] = &allowList
 				}
 				ipv6Address := cntr.NetworkSettings.Networks[network].GlobalIPv6Address
 				if len(ipv6Address) > 0 {
-					allowLists.ByIP[ipv6Address] = &allowList
+					allowLists.byIP[ipv6Address] = &allowList
 				}
 			}
 		}
@@ -411,9 +419,6 @@ func (allowLists *AllowListRegistry) updateFromEvent(
 // add the allowlist for the container with the given ID to the allowlist registry
 // if it has at least one socket-proxy allow label and is in a same network as the socket-proxy
 func (allowLists *AllowListRegistry) add(dockerClient *client.Client, containerID string) ([]string, error) {
-	allowLists.Mutex.Lock()
-	defer allowLists.Mutex.Unlock()
-
 	var methods []string
 	for _, rx := range mr {
 		methods = append(methods, rx.method)
@@ -440,16 +445,19 @@ func (allowLists *AllowListRegistry) add(dockerClient *client.Client, containerI
 			AllowedBindMounts: allowedBindMounts,
 		}
 
+		allowLists.mutex.Lock()
+		defer allowLists.mutex.Unlock()
+
 		for networkID, cntrNetwork := range cntr.NetworkSettings.Networks {
 			if slices.Contains(allowLists.Networks, networkID) {
 				ipv4Address := cntrNetwork.IPAddress
 				if len(ipv4Address) > 0 {
-					allowLists.ByIP[ipv4Address] = &allowList
+					allowLists.byIP[ipv4Address] = &allowList
 					ips = append(ips, ipv4Address)
 				}
 				ipv6Address := cntrNetwork.GlobalIPv6Address
 				if len(ipv6Address) > 0 {
-					allowLists.ByIP[ipv6Address] = &allowList
+					allowLists.byIP[ipv6Address] = &allowList
 					ips = append(ips, ipv6Address)
 				}
 			}
@@ -461,12 +469,12 @@ func (allowLists *AllowListRegistry) add(dockerClient *client.Client, containerI
 
 // remove allowlists having the given container ID from the allowlist registry
 func (allowLists *AllowListRegistry) remove(containerID string) {
-	allowLists.Mutex.Lock()
-	defer allowLists.Mutex.Unlock()
+	allowLists.mutex.Lock()
+	defer allowLists.mutex.Unlock()
 
-	for ip, allowList := range allowLists.ByIP {
+	for ip, allowList := range allowLists.byIP {
 		if allowList.ID == containerID {
-			delete(allowLists.ByIP, ip)
+			delete(allowLists.byIP, ip)
 		}
 	}
 }

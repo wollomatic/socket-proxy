@@ -71,10 +71,7 @@ func checkForAllowListByIP(w http.ResponseWriter, r *http.Request) *config.Allow
 		return nil
 	}
 
-	cfg.AllowLists.Mutex.RLock()
-	defer cfg.AllowLists.Mutex.RUnlock()
-
-	allowList, found := cfg.AllowLists.ByIP[clientIPStr]
+	allowList, found := cfg.AllowLists.FindByIP(clientIPStr)
 	if !found {
 		return nil
 	}
