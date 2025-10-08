@@ -89,12 +89,7 @@ func main() {
 		// enables the use of labels to specify per-container allowlists
 		slog.Debug("no proxy container name provided")
 	}
-	if len(cfg.AllowLists.Networks) > 0 {
-		slog.Info("socket proxy networks detected", "socketproxynetworks", cfg.AllowLists.Networks)
-	} else {
-		// we only log this on DEBUG level because the socket proxy networks are used for per-container allowlists
-		slog.Debug("no socket proxy networks detected")
-	}
+	cfg.AllowLists.PrintNetworks()
 
 	// print default request allowlist
 	cfg.AllowLists.PrintDefault(cfg.LogJSON)

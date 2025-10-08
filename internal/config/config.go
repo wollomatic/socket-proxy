@@ -60,7 +60,7 @@ type Config struct {
 
 type AllowListRegistry struct {
 	mutex    sync.RWMutex          // mutex to control read/write of byIP
-	Networks []string              // names of networks in which socket proxy access is allowed for non-default allowlists
+	networks []string              // names of networks in which socket proxy access is allowed for non-default allowlists
 	Default  *AllowList            // default allowlist
 	byIP     map[string]*AllowList // map container IP address to allowlist for that container
 }
@@ -263,7 +263,7 @@ func InitConfig() (*Config, error) {
 
 	if cfg.ProxySocketEndpoint == "" && cfg.ProxyContainerName != "" {
 		var err error
-		allowLists.Networks, err = listSocketProxyNetworks(cfg.ProxyContainerName)
+		allowLists.networks, err = listSocketProxyNetworks(cfg.ProxyContainerName)
 		if err != nil {
 			return nil, err
 		}
@@ -335,6 +335,16 @@ func (cfg *Config) UpdateAllowLists() {
 	}
 }
 
+// print the allowed networks
+func (allowLists *AllowListRegistry) PrintNetworks() {
+	if len(allowLists.networks) > 0 {
+		slog.Info("socket proxy networks detected", "socketproxynetworks", allowLists.networks)
+	} else {
+		// we only log this on DEBUG level because the socket proxy networks are used for per-container allowlists
+		slog.Debug("no socket proxy networks detected")
+	}
+}
+
 // print the default allowlist
 func (allowLists *AllowListRegistry) PrintDefault(logJSON bool) {
 	allowLists.Default.Print("", logJSON)
@@ -369,7 +379,7 @@ func (allowLists *AllowListRegistry) initByIP(ctx context.Context, dockerClient 
 
 	allowLists.byIP = make(map[string]*AllowList)
 
-	for _, network := range allowLists.Networks {
+	for _, network := range allowLists.networks {
 		filter := filters.NewArgs()
 		filter.Add("network", network)
 		containers, err := dockerClient.ContainerList(ctx, container.ListOptions{Filters: filter})
@@ -386,19 +396,20 @@ func (allowLists *AllowListRegistry) initByIP(ctx context.Context, dockerClient 
 			}
 
 			if len(allowedRequests) > 0 || len(allowedBindMounts) > 0 {
-				allowList := AllowList{
-					ID: cntr.ID,
-					AllowedRequests: allowedRequests,
-					AllowedBindMounts: allowedBindMounts,
-				}
+				cntrNetwork, found := cntr.NetworkSettings.Networks[network]
+				if found {
+					allowList := AllowList{
+						ID: cntr.ID,
+						AllowedRequests: allowedRequests,
+						AllowedBindMounts: allowedBindMounts,
+					}
 
-				ipv4Address := cntr.NetworkSettings.Networks[network].IPAddress
-				if len(ipv4Address) > 0 {
-					allowLists.byIP[ipv4Address] = &allowList
-				}
-				ipv6Address := cntr.NetworkSettings.Networks[network].GlobalIPv6Address
-				if len(ipv6Address) > 0 {
-					allowLists.byIP[ipv6Address] = &allowList
+					if len(cntrNetwork.IPAddress) > 0 {
+						allowLists.byIP[cntrNetwork.IPAddress] = &allowList
+					}
+					if len(cntrNetwork.GlobalIPv6Address) > 0 {
+						allowLists.byIP[cntrNetwork.GlobalIPv6Address] = &allowList
+					}
 				}
 			}
 		}
@@ -469,7 +480,7 @@ func (allowLists *AllowListRegistry) add(
 		defer allowLists.mutex.Unlock()
 
 		for networkID, cntrNetwork := range cntr.NetworkSettings.Networks {
-			if slices.Contains(allowLists.Networks, networkID) {
+			if slices.Contains(allowLists.networks, networkID) {
 				ipv4Address := cntrNetwork.IPAddress
 				if len(ipv4Address) > 0 {
 					allowLists.byIP[ipv4Address] = &allowList
@@ -599,4 +610,3 @@ func extractLabelData(cntr container.Summary, methods []string) (map[string]*reg
 	}
 	return allowedRequests, allowedBindMounts, nil
 }
-
