@@ -209,18 +209,18 @@ func InitConfig() (*Config, error) {
 
 	// check listenIP and proxyPort
 	if proxyPort < 1 || proxyPort > 65535 {
-			return nil, errors.New("port number has to be between 1 and 65535")
+		return nil, errors.New("port number has to be between 1 and 65535")
 	}
 	ip := net.ParseIP(listenIP)
 	if ip == nil {
-			return nil, fmt.Errorf("invalid IP \"%s\" for listenip", listenIP)
+		return nil, fmt.Errorf("invalid IP \"%s\" for listenip", listenIP)
 	}
 
 	// Properly format address for both IPv4 and IPv6
 	if ip.To4() == nil {
-			cfg.ListenAddress = fmt.Sprintf("[%s]:%d", listenIP, proxyPort)
+		cfg.ListenAddress = fmt.Sprintf("[%s]:%d", listenIP, proxyPort)
 	} else {
-			cfg.ListenAddress = fmt.Sprintf("%s:%d", listenIP, proxyPort)
+		cfg.ListenAddress = fmt.Sprintf("%s:%d", listenIP, proxyPort)
 	}
 
 	// parse defaultLogLevel and setup logging handler depending on defaultLogJSON
@@ -369,11 +369,6 @@ func (allowLists *AllowListRegistry) FindByIP(ip string) (*AllowList, bool) {
 
 // initialise allowlist registry byIP allowlists
 func (allowLists *AllowListRegistry) initByIP(ctx context.Context, dockerClient *client.Client) error {
-	var methods []string
-	for _, rx := range mr {
-		methods = append(methods, rx.method)
-	}
-
 	allowLists.mutex.Lock()
 	defer allowLists.mutex.Unlock()
 
@@ -389,7 +384,7 @@ func (allowLists *AllowListRegistry) initByIP(ctx context.Context, dockerClient 
 		}
 
 		for _, cntr := range containers {
-			allowedRequests, allowedBindMounts, err := extractLabelData(cntr, methods)
+			allowedRequests, allowedBindMounts, err := extractLabelData(cntr)
 			if err != nil {
 				allowLists.byIP = nil
 				return err
@@ -399,8 +394,8 @@ func (allowLists *AllowListRegistry) initByIP(ctx context.Context, dockerClient 
 				cntrNetwork, found := cntr.NetworkSettings.Networks[network]
 				if found {
 					allowList := AllowList{
-						ID: cntr.ID,
-						AllowedRequests: allowedRequests,
+						ID:                cntr.ID,
+						AllowedRequests:   allowedRequests,
 						AllowedBindMounts: allowedBindMounts,
 					}
 
@@ -446,11 +441,6 @@ func (allowLists *AllowListRegistry) updateFromEvent(
 func (allowLists *AllowListRegistry) add(
 	ctx context.Context, dockerClient *client.Client, containerID string,
 ) ([]string, error) {
-	var methods []string
-	for _, rx := range mr {
-		methods = append(methods, rx.method)
-	}
-
 	filter := filters.NewArgs()
 	filter.Add("id", containerID)
 	containers, err := dockerClient.ContainerList(ctx, container.ListOptions{Filters: filter})
@@ -463,7 +453,7 @@ func (allowLists *AllowListRegistry) add(
 	}
 	cntr := containers[0]
 
-	allowedRequests, allowedBindMounts, err := extractLabelData(cntr, methods)
+	allowedRequests, allowedBindMounts, err := extractLabelData(cntr)
 	if err != nil {
 		return nil, err
 	}
@@ -471,8 +461,8 @@ func (allowLists *AllowListRegistry) add(
 	var ips []string
 	if len(allowedRequests) > 0 || len(allowedBindMounts) > 0 {
 		allowList := AllowList{
-			ID: cntr.ID,
-			AllowedRequests: allowedRequests,
+			ID:                cntr.ID,
+			AllowedRequests:   allowedRequests,
 			AllowedBindMounts: allowedBindMounts,
 		}
 
@@ -579,7 +569,7 @@ func listSocketProxyNetworks(proxyContainerName string) ([]string, error) {
 		return nil, fmt.Errorf("socket-proxy container \"%s\" was not found", proxyContainerName)
 	}
 
-	var networks []string
+	networks := make([]string, 0, len(containers[0].NetworkSettings.Networks))
 	for networkID, _ := range containers[0].NetworkSettings.Networks {
 		networks = append(networks, networkID)
 	}
@@ -587,13 +577,13 @@ func listSocketProxyNetworks(proxyContainerName string) ([]string, error) {
 }
 
 // extract Docker container allowlist label data from the container summary
-func extractLabelData(cntr container.Summary, methods []string) (map[string]*regexp.Regexp, []string, error) {
+func extractLabelData(cntr container.Summary) (map[string]*regexp.Regexp, []string, error) {
 	allowedRequests := make(map[string]*regexp.Regexp)
-	allowedBindMounts := []string{}
+	var allowedBindMounts []string
 	for labelName, labelValue := range cntr.Labels {
 		if strings.HasPrefix(labelName, allowedDockerLabelPrefix) && labelValue != "" {
 			allowSpec := strings.ToUpper(strings.TrimPrefix(labelName, allowedDockerLabelPrefix))
-			if slices.Contains(methods, allowSpec) {
+			if slices.ContainsFunc(mr, func(rx methodRegex) bool { return rx.method == allowSpec }) {
 				r, err := compileRegexp(labelValue, allowSpec, "docker container label")
 				if err != nil {
 					return nil, nil, err
