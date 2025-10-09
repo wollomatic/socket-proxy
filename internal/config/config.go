@@ -59,10 +59,10 @@ type Config struct {
 }
 
 type AllowListRegistry struct {
-	mutex    sync.RWMutex          // mutex to control read/write of byIP
-	networks []string              // names of networks in which socket proxy access is allowed for non-default allowlists
-	Default  *AllowList            // default allowlist
-	byIP     map[string]*AllowList // map container IP address to allowlist for that container
+	mutex    sync.RWMutex         // mutex to control read/write of byIP
+	networks []string             // names of networks in which socket proxy access is allowed for non-default allowlists
+	Default  AllowList            // default allowlist
+	byIP     map[string]AllowList // map container IP address to allowlist for that container
 }
 
 type AllowList struct {
@@ -97,8 +97,6 @@ var mr = []methodRegex{
 func InitConfig() (*Config, error) {
 	var (
 		cfg                      Config
-		allowLists               AllowListRegistry
-		defaultAllowList         AllowList
 		allowFromString          string
 		listenIP                 string
 		proxyPort                uint
@@ -195,16 +193,19 @@ func InitConfig() (*Config, error) {
 	}
 	flag.Parse()
 
+	// init allowlist registry to configure default allowlist
+	cfg.AllowLists = &AllowListRegistry{}
+
 	// parse comma-separeted allowFromString into allowFrom slice
 	cfg.AllowFrom = strings.Split(allowFromString, ",")
 
-	// parse allowBindMountFromString into AllowBindMountFrom slice and validate
+	// parse allowBindMountFromString into default allowlist AllowedBindMounts slice and validate
 	if allowBindMountFromString != "" {
 		allowedBindMounts, err := parseAllowedBindMounts(allowBindMountFromString)
 		if err != nil {
 			return nil, err
 		}
-		defaultAllowList.AllowedBindMounts = allowedBindMounts
+		cfg.AllowLists.Default.AllowedBindMounts = allowedBindMounts
 	}
 
 	// check listenIP and proxyPort
@@ -242,34 +243,32 @@ func InitConfig() (*Config, error) {
 	}
 	cfg.ProxySocketEndpointFileMode = os.FileMode(uint32(endpointFileMode))
 
-	// compile regexes for allowed requests
-	defaultAllowList.AllowedRequests = make(map[string]*regexp.Regexp)
+	// compile regexes for default allowed requests
+	cfg.AllowLists.Default.AllowedRequests = make(map[string]*regexp.Regexp)
 	for _, rx := range mr {
 		if rx.regexStringFromParam != "" {
 			r, err := compileRegexp(rx.regexStringFromParam, rx.method, "command line parameter")
 			if err != nil {
 				return nil, err
 			}
-			defaultAllowList.AllowedRequests[rx.method] = r
+			cfg.AllowLists.Default.AllowedRequests[rx.method] = r
 		} else if rx.regexStringFromEnv != "" {
 			r, err := compileRegexp(rx.regexStringFromEnv, rx.method, "env variable")
 			if err != nil {
 				return nil, err
 			}
-			defaultAllowList.AllowedRequests[rx.method] = r
+			cfg.AllowLists.Default.AllowedRequests[rx.method] = r
 		}
 	}
-	allowLists.Default = &defaultAllowList
 
+	// populate list of socket proxy networks if applicable
 	if cfg.ProxySocketEndpoint == "" && cfg.ProxyContainerName != "" {
 		var err error
-		allowLists.networks, err = listSocketProxyNetworks(cfg.ProxyContainerName)
+		cfg.AllowLists.networks, err = listSocketProxyNetworks(cfg.ProxyContainerName)
 		if err != nil {
 			return nil, err
 		}
 	}
-
-	cfg.AllowLists = &allowLists
 
 	return &cfg, nil
 }
@@ -317,9 +316,9 @@ func (cfg *Config) UpdateAllowLists() {
 			}
 			for _, ip := range addedIPs {
 				cfg.AllowLists.mutex.RLock()
-				allowList := cfg.AllowLists.byIP[ip]
+				allowList, found := cfg.AllowLists.byIP[ip]
 				cfg.AllowLists.mutex.RUnlock()
-				if allowList != nil {
+				if found {
 					allowList.Print(ip, cfg.LogJSON)
 				}
 			}
@@ -360,7 +359,7 @@ func (allowLists *AllowListRegistry) PrintByIP(logJSON bool) {
 }
 
 // return the allowlist corresponding to the given IP address if found
-func (allowLists *AllowListRegistry) FindByIP(ip string) (*AllowList, bool) {
+func (allowLists *AllowListRegistry) FindByIP(ip string) (AllowList, bool) {
 	allowLists.mutex.RLock()
 	defer allowLists.mutex.RUnlock()
 	allowList, found := allowLists.byIP[ip]
@@ -372,7 +371,7 @@ func (allowLists *AllowListRegistry) initByIP(ctx context.Context, dockerClient 
 	allowLists.mutex.Lock()
 	defer allowLists.mutex.Unlock()
 
-	allowLists.byIP = make(map[string]*AllowList)
+	allowLists.byIP = make(map[string]AllowList)
 
 	for _, network := range allowLists.networks {
 		filter := filters.NewArgs()
@@ -400,10 +399,10 @@ func (allowLists *AllowListRegistry) initByIP(ctx context.Context, dockerClient 
 					}
 
 					if len(cntrNetwork.IPAddress) > 0 {
-						allowLists.byIP[cntrNetwork.IPAddress] = &allowList
+						allowLists.byIP[cntrNetwork.IPAddress] = allowList
 					}
 					if len(cntrNetwork.GlobalIPv6Address) > 0 {
-						allowLists.byIP[cntrNetwork.GlobalIPv6Address] = &allowList
+						allowLists.byIP[cntrNetwork.GlobalIPv6Address] = allowList
 					}
 				}
 			}
@@ -473,12 +472,12 @@ func (allowLists *AllowListRegistry) add(
 			if slices.Contains(allowLists.networks, networkID) {
 				ipv4Address := cntrNetwork.IPAddress
 				if len(ipv4Address) > 0 {
-					allowLists.byIP[ipv4Address] = &allowList
+					allowLists.byIP[ipv4Address] = allowList
 					ips = append(ips, ipv4Address)
 				}
 				ipv6Address := cntrNetwork.GlobalIPv6Address
 				if len(ipv6Address) > 0 {
-					allowLists.byIP[ipv6Address] = &allowList
+					allowLists.byIP[ipv6Address] = allowList
 					ips = append(ips, ipv6Address)
 				}
 			}
@@ -505,7 +504,7 @@ func (allowLists *AllowListRegistry) remove(containerID string) []string {
 
 // print the allowlist, including the IP address of the associated container if it is not empty,
 // and in JSON format if logJSON is true
-func (allowList *AllowList) Print(ip string, logJSON bool) {
+func (allowList AllowList) Print(ip string, logJSON bool) {
 	if logJSON {
 		if ip == "" {
 			for method, regex := range allowList.AllowedRequests {
@@ -570,7 +569,7 @@ func listSocketProxyNetworks(proxyContainerName string) ([]string, error) {
 	}
 
 	networks := make([]string, 0, len(containers[0].NetworkSettings.Networks))
-	for networkID, _ := range containers[0].NetworkSettings.Networks {
+	for networkID := range containers[0].NetworkSettings.Networks {
 		networks = append(networks, networkID)
 	}
 	return networks, nil

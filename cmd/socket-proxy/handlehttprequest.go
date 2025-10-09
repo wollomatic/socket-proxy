@@ -13,8 +13,8 @@ import (
 // Otherwise, it returns a "405 Method Not Allowed" or a "403 Forbidden" error.
 // In case of an error, it returns a 500 Internal Server Error.
 func handleHTTPRequest(w http.ResponseWriter, r *http.Request) {
-	allowList := determineAllowList(r)
-	if allowList == nil {
+	allowList, ok := determineAllowList(r)
+	if !ok {
 		communicateBlockedRequest(w, r, "forbidden IP", http.StatusForbidden)
 		return
 	}
@@ -40,21 +40,21 @@ func handleHTTPRequest(w http.ResponseWriter, r *http.Request) {
 	socketProxy.ServeHTTP(w, r) // proxy the request
 }
 
-// return the relevant allowlist, or nil if the IP address is forbidden
-func determineAllowList(r *http.Request) *config.AllowList {
+// return the relevant allowlist
+func determineAllowList(r *http.Request) (config.AllowList, bool) {
 	if cfg.ProxySocketEndpoint == "" { // do not perform this check if we proxy to a unix socket
 		// Get the client IP address from the remote address string
 		clientIPStr, _, err := net.SplitHostPort(r.RemoteAddr)
 		if err != nil {
 			slog.Warn("cannot get valid IP address from request", "reason", err, "method", r.Method, "URL", r.URL, "client", r.RemoteAddr)
-			return nil
+			return config.AllowList{}, false
 		}
 
 		// If applicable, get the non-default allowlist corresponding to the client IP address
 		if cfg.ProxyContainerName != "" {
 			allowList, found := cfg.AllowLists.FindByIP(clientIPStr)
-			if found && allowList != nil {
-				return allowList
+			if found {
+				return allowList, true
 			}
 		}
 
@@ -64,11 +64,11 @@ func determineAllowList(r *http.Request) *config.AllowList {
 			slog.Warn("cannot get valid IP address for client allowlist check", "reason", err, "method", r.Method, "URL", r.URL, "client", r.RemoteAddr)
 		}
 		if !allowedIP {
-			return nil
+			return config.AllowList{}, false
 		}
 	}
 
-	return cfg.AllowLists.Default
+	return cfg.AllowLists.Default, true
 }
 
 // isAllowedClient checks if the given remote address is allowed to connect to the proxy.
