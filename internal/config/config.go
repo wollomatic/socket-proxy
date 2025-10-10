@@ -275,7 +275,8 @@ func InitConfig() (*Config, error) {
 
 // populate the byIP allowlists then keep them updated
 func (cfg *Config) UpdateAllowLists() {
-	ctx := context.Background()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 
 	dockerClient, err := client.NewClientWithOpts(client.FromEnv)
 	if err != nil {
