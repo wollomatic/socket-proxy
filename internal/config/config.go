@@ -16,6 +16,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/events"
@@ -553,27 +554,45 @@ func parseAllowedBindMounts(allowBindMountFromString string) ([]string, error) {
 
 // return list of docker networks that the socket-proxy container is in
 func listSocketProxyNetworks(proxyContainerName string) ([]string, error) {
-	dockerClient, err := client.NewClientWithOpts(client.FromEnv)
+	cntr, err := getSocketProxyContainerSummary(proxyContainerName)
 	if err != nil {
 		return nil, err
 	}
-	defer dockerClient.Close()
 
-	filter := filters.NewArgs()
-	filter.Add("name", proxyContainerName)
-	containers, err := dockerClient.ContainerList(context.Background(), container.ListOptions{Filters: filter})
-	if err != nil {
-		return nil, err
-	}
-	if len(containers) == 0 {
-		return nil, fmt.Errorf("socket-proxy container \"%s\" was not found", proxyContainerName)
-	}
-
-	networks := make([]string, 0, len(containers[0].NetworkSettings.Networks))
-	for networkID := range containers[0].NetworkSettings.Networks {
+	networks := make([]string, 0, len(cntr.NetworkSettings.Networks))
+	for networkID := range cntr.NetworkSettings.Networks {
 		networks = append(networks, networkID)
 	}
 	return networks, nil
+}
+
+// return Docker container summary for the socket proxy container
+func getSocketProxyContainerSummary(proxyContainerName string) (container.Summary, error) {
+	const maxTries = 3
+
+	dockerClient, err := client.NewClientWithOpts(client.FromEnv)
+	if err != nil {
+		return container.Summary{}, err
+	}
+	defer dockerClient.Close()
+
+	ctx := context.Background()
+	filter := filters.NewArgs()
+	filter.Add("name", proxyContainerName)
+	var containers []container.Summary
+	for i := 1; i < maxTries; i++ {
+		containers, err = dockerClient.ContainerList(ctx, container.ListOptions{Filters: filter})
+		if err != nil {
+			return container.Summary{}, err
+		}
+		if len(containers) > 0 {
+			return containers[0], nil
+		}
+		if i < maxTries {
+			time.Sleep(time.Duration(i) * time.Second)
+		}
+	}
+	return container.Summary{}, fmt.Errorf("socket-proxy container \"%s\" was not found", proxyContainerName)
 }
 
 // extract Docker container allowlist label data from the container summary
