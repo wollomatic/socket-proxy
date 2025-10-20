@@ -310,7 +310,7 @@ func (cfg *Config) UpdateAllowLists() {
 				slog.Info("Docker event stream closed")
 				return
 			}
-			slog.Debug("received Docker container event", "action", event.Action, "containerID", event.Actor.ID)
+			slog.Debug("received Docker container event", "action", event.Action, "id", event.Actor.ID[:12])
 			addedIPs, removedIPs, updateErr := cfg.AllowLists.updateFromEvent(ctx, dockerClient, event)
 			if updateErr != nil {
 				slog.Warn("failed to update allowlists from container event", "error", updateErr)
@@ -325,7 +325,7 @@ func (cfg *Config) UpdateAllowLists() {
 				}
 			}
 			for _, ip := range removedIPs {
-				slog.Info("removed allowlist for container", "containerID", event.Actor.ID, "ip", ip)
+				slog.Info("removed allowlist for container", "id", event.Actor.ID[:12], "ip", ip)
 			}
 		case err := <-errChan:
 			if err != nil {
@@ -449,7 +449,7 @@ func (allowLists *AllowListRegistry) add(
 		return nil, err
 	}
 	if len(containers) == 0 {
-		slog.Warn("container not found, may have stopped quickly", "containerID", containerID)
+		slog.Warn("container not found, may have stopped quickly", "id", containerID[:12])
 		return nil, nil
 	}
 	cntr := containers[0]
@@ -514,7 +514,12 @@ func (allowList AllowList) Print(ip string, logJSON bool) {
 			}
 		} else {
 			for method, regex := range allowList.AllowedRequests {
-				slog.Info("configured request allowlist", "ip", ip, "method", method, "regex", regex)
+				slog.Info("configured request allowlist",
+					"id", allowList.ID[:12],
+					"ip", ip,
+					"method", method,
+					"regex", regex,
+				)
 			}
 		}
 	} else {
@@ -523,7 +528,7 @@ func (allowList AllowList) Print(ip string, logJSON bool) {
 		if ip == "" {
 			fmt.Printf("Default request allowlist:\n   %-8s %s\n", "Method", "Regex")
 		} else {
-			fmt.Printf("Request allowlist for %s:\n   %-8s %s\n", ip, "Method", "Regex")
+			fmt.Printf("Request allowlist for %s (%s):\n   %-8s %s\n", allowList.ID[:12], ip, "Method", "Regex")
 		}
 		for method, regex := range allowList.AllowedRequests {
 			fmt.Printf("   %-8s %s\n", method, regex)
