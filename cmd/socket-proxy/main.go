@@ -76,12 +76,6 @@ func main() {
 	} else {
 		slog.Info("watchdog disabled")
 	}
-	if len(cfg.AllowLists.Default.AllowedBindMounts) > 0 {
-		slog.Info("Docker bind mount restrictions enabled", "allowbindmountfrom", cfg.AllowLists.Default.AllowedBindMounts)
-	} else {
-		// we only log this on DEBUG level because bind mount restrictions are a very special use case
-		slog.Debug("no Docker bind mount restrictions")
-	}
 	if len(cfg.ProxyContainerName) > 0 {
 		slog.Info("Proxy container name provided", "proxycontainername", cfg.ProxyContainerName)
 	} else {

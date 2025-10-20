@@ -507,6 +507,7 @@ func (allowLists *AllowListRegistry) remove(containerID string) []string {
 // print the allowlist, including the IP address of the associated container if it is not empty,
 // and in JSON format if logJSON is true
 func (allowList AllowList) Print(ip string, logJSON bool) {
+	// print allowed requests
 	if logJSON {
 		if ip == "" {
 			for method, regex := range allowList.AllowedRequests {
@@ -532,6 +533,27 @@ func (allowList AllowList) Print(ip string, logJSON bool) {
 		}
 		for method, regex := range allowList.AllowedRequests {
 			fmt.Printf("   %-8s %s\n", method, regex)
+		}
+	}
+	// print allowed bind mounts
+	if len(allowList.AllowedBindMounts) > 0 {
+		if ip == "" {
+			slog.Info("Default Docker bind mount restrictions enabled",
+				"allowbindmountfrom", allowList.AllowedBindMounts,
+			)
+		} else {
+			slog.Info("Docker bind mount restrictions enabled",
+				"allowbindmountfrom", allowList.AllowedBindMounts,
+				"id", allowList.ID[:12],
+				"ip", ip,
+			)
+		}
+	} else {
+		// we only log this on DEBUG level because bind mount restrictions are a very special use case
+		if ip == "" {
+			slog.Debug("no default Docker bind mount restrictions")
+		} else {
+			slog.Debug("no Docker bind mount restrictions", "id", allowList.ID[:12], "ip", ip)
 		}
 	}
 }
