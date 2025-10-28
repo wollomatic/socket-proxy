@@ -262,7 +262,7 @@ socket-proxy can be configured via command line parameters or via environment va
 ## License
 This project is licensed under the MIT License – see the [LICENSE](LICENSE) file for details.
 
-Parts of the file `cmd/internal/bindmount.go` are licensed under the Apache 2.0 License.  
+Parts of the file `cmd/socket-proxy/bindmount.go` and files under the `internal/docker` and `internal/go-connections` folders are licensed under the Apache 2.0 License.
 See the comments in this file and the LICENSE file for more information.
 
 ## Aknowledgements

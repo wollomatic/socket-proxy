@@ -18,10 +18,10 @@ import (
 	"sync"
 	"time"
 
-	"github.com/docker/docker/api/types/container"
-	"github.com/docker/docker/api/types/events"
-	"github.com/docker/docker/api/types/filters"
-	"github.com/docker/docker/client"
+	"github.com/wollomatic/socket-proxy/internal/docker/api/types/container"
+	"github.com/wollomatic/socket-proxy/internal/docker/api/types/events"
+	"github.com/wollomatic/socket-proxy/internal/docker/api/types/filters"
+	"github.com/wollomatic/socket-proxy/internal/docker/client"
 )
 
 const allowedDockerLabelPrefix = "socket-proxy.allow."
@@ -265,7 +265,7 @@ func InitConfig() (*Config, error) {
 	// populate list of socket proxy networks if applicable
 	if cfg.ProxySocketEndpoint == "" && cfg.ProxyContainerName != "" {
 		var err error
-		cfg.AllowLists.networks, err = listSocketProxyNetworks(cfg.ProxyContainerName)
+		cfg.AllowLists.networks, err = listSocketProxyNetworks(cfg.SocketPath, cfg.ProxyContainerName)
 		if err != nil {
 			return nil, err
 		}
@@ -274,12 +274,15 @@ func InitConfig() (*Config, error) {
 	return &cfg, nil
 }
 
-// populate the byIP allowlists then keep them updated
+// UpdateAllowLists populates the byIP allowlists then keeps them updated
 func (cfg *Config) UpdateAllowLists() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	dockerClient, err := client.NewClientWithOpts(client.FromEnv)
+	dockerClient, err := client.NewClientWithOpts(
+		client.WithHost("unix://"+cfg.SocketPath),
+		client.WithAPIVersionNegotiation(),
+	)
 	if err != nil {
 		slog.Error("failed to create Docker client", "error", err)
 		return
@@ -292,8 +295,6 @@ func (cfg *Config) UpdateAllowLists() {
 		return
 	}
 	slog.Debug("initialised non-default allowlists")
-	// print non-default request allowlists
-	cfg.AllowLists.PrintByIP(cfg.LogJSON)
 
 	filter := filters.NewArgs()
 	filter.Add("type", "container")
@@ -303,6 +304,10 @@ func (cfg *Config) UpdateAllowLists() {
 	eventsChan, errChan := dockerClient.Events(ctx, events.ListOptions{Filters: filter})
 	slog.Debug("subscribed to Docker event stream to update allowlists")
 
+	// print non-default request allowlists
+	cfg.AllowLists.PrintByIP(cfg.LogJSON)
+
+	// handle Docker events to update allowlists
 	for {
 		select {
 		case event, ok := <-eventsChan:
@@ -336,7 +341,7 @@ func (cfg *Config) UpdateAllowLists() {
 	}
 }
 
-// print the allowed networks
+// PrintNetworks prints the allowed networks
 func (allowLists *AllowListRegistry) PrintNetworks() {
 	if len(allowLists.networks) > 0 {
 		slog.Info("socket proxy networks detected", "socketproxynetworks", allowLists.networks)
@@ -346,12 +351,12 @@ func (allowLists *AllowListRegistry) PrintNetworks() {
 	}
 }
 
-// print the default allowlist
+// PrintDefault prints the default allowlist
 func (allowLists *AllowListRegistry) PrintDefault(logJSON bool) {
 	allowLists.Default.Print("", logJSON)
 }
 
-// print the non-default allowlists
+// PrintByIP prints the non-default allowlists
 func (allowLists *AllowListRegistry) PrintByIP(logJSON bool) {
 	allowLists.mutex.RLock()
 	defer allowLists.mutex.RUnlock()
@@ -360,7 +365,7 @@ func (allowLists *AllowListRegistry) PrintByIP(logJSON bool) {
 	}
 }
 
-// return the allowlist corresponding to the given IP address if found
+// FindByIP returns the allowlist corresponding to the given IP address if found
 func (allowLists *AllowListRegistry) FindByIP(ip string) (AllowList, bool) {
 	allowLists.mutex.RLock()
 	defer allowLists.mutex.RUnlock()
@@ -370,30 +375,30 @@ func (allowLists *AllowListRegistry) FindByIP(ip string) (AllowList, bool) {
 
 // initialise allowlist registry byIP allowlists
 func (allowLists *AllowListRegistry) initByIP(ctx context.Context, dockerClient *client.Client) error {
+	filter := filters.NewArgs()
+	for _, network := range allowLists.networks {
+		filter.Add("network", network)
+	}
+	containers, err := dockerClient.ContainerList(ctx, container.ListOptions{Filters: filter})
+	if err != nil {
+		return err
+	}
+
 	allowLists.mutex.Lock()
 	defer allowLists.mutex.Unlock()
 
 	allowLists.byIP = make(map[string]AllowList)
 
-	for _, network := range allowLists.networks {
-		filter := filters.NewArgs()
-		filter.Add("network", network)
-		containers, err := dockerClient.ContainerList(ctx, container.ListOptions{Filters: filter})
+	for _, cntr := range containers {
+		allowedRequests, allowedBindMounts, err := extractLabelData(cntr)
 		if err != nil {
 			allowLists.byIP = nil
 			return err
 		}
 
-		for _, cntr := range containers {
-			allowedRequests, allowedBindMounts, err := extractLabelData(cntr)
-			if err != nil {
-				allowLists.byIP = nil
-				return err
-			}
-
-			if len(allowedRequests) > 0 || len(allowedBindMounts) > 0 {
-				cntrNetwork, found := cntr.NetworkSettings.Networks[network]
-				if found {
+		if len(allowedRequests) > 0 || len(allowedBindMounts) > 0 {
+			for networkID, cntrNetwork := range cntr.NetworkSettings.Networks {
+				if slices.Contains(allowLists.networks, networkID) {
 					allowList := AllowList{
 						ID:                cntr.ID,
 						AllowedRequests:   allowedRequests,
@@ -444,12 +449,15 @@ func (allowLists *AllowListRegistry) add(
 ) ([]string, error) {
 	filter := filters.NewArgs()
 	filter.Add("id", containerID)
+	for _, network := range allowLists.networks {
+		filter.Add("network", network)
+	}
 	containers, err := dockerClient.ContainerList(ctx, container.ListOptions{Filters: filter})
 	if err != nil {
 		return nil, err
 	}
 	if len(containers) == 0 {
-		slog.Warn("container not found, may have stopped quickly", "id", containerID[:12])
+		slog.Debug("container is not in a network with socket-proxy or may have stopped", "id", containerID[:12])
 		return nil, nil
 	}
 	cntr := containers[0]
@@ -504,7 +512,7 @@ func (allowLists *AllowListRegistry) remove(containerID string) []string {
 	return removedIPs
 }
 
-// print the allowlist, including the IP address of the associated container if it is not empty,
+// Print prints the allowlist, including the IP address of the associated container if it is not empty,
 // and in JSON format if logJSON is true
 func (allowList AllowList) Print(ip string, logJSON bool) {
 	// print allowed requests
@@ -580,8 +588,8 @@ func parseAllowedBindMounts(allowBindMountFromString string) ([]string, error) {
 }
 
 // return list of docker networks that the socket-proxy container is in
-func listSocketProxyNetworks(proxyContainerName string) ([]string, error) {
-	cntr, err := getSocketProxyContainerSummary(proxyContainerName)
+func listSocketProxyNetworks(socketPath, proxyContainerName string) ([]string, error) {
+	cntr, err := getSocketProxyContainerSummary(socketPath, proxyContainerName)
 	if err != nil {
 		return nil, err
 	}
@@ -594,10 +602,13 @@ func listSocketProxyNetworks(proxyContainerName string) ([]string, error) {
 }
 
 // return Docker container summary for the socket proxy container
-func getSocketProxyContainerSummary(proxyContainerName string) (container.Summary, error) {
+func getSocketProxyContainerSummary(socketPath, proxyContainerName string) (container.Summary, error) {
 	const maxTries = 3
 
-	dockerClient, err := client.NewClientWithOpts(client.FromEnv)
+	dockerClient, err := client.NewClientWithOpts(
+		client.WithHost("unix://"+socketPath),
+		client.WithAPIVersionNegotiation(),
+	)
 	if err != nil {
 		return container.Summary{}, err
 	}
