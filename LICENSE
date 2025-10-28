@@ -21,9 +21,10 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 ---
-Parts of this project, specifically the file cmd/internal/bindmount.go,
+Parts of this project, specifically the file cmd/socket-proxy/bindmount.go and
+the files in the internal/docker and internal/go-connections folders,
 contain source code licensed under the Apache License 2.0. See the comments
-in that file for details.
+in the applicable files for details.
 The rest of the project is licensed under the MIT License.
 
                                  Apache License
