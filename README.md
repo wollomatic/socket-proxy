@@ -6,13 +6,10 @@
 
 > [!IMPORTANT]
 >## Usage with Traefik => 2.11.31 / => 3.6.1
->Due to a change how Traefik gets the Docker API version (traefik/traefik#12256), the Socket-Proxy configuraion for Traefik needs to be changed to:
+>Due to a change in how Traefik retrieves the Docker API version (traefik/traefik#12256), the Socket-Proxy configuration for Traefik must be updated to allow `HEAD` requests to `/_ping`:
 >
->      - '-allowGET=(/v1\..{1,2}/(version|containers/.*|events.*))|/_ping'
 >      - '-allowHEAD=/_ping'
 >
->(add /_ping to the allowed requests).
-> 
 >Otherwise, Traefik would fall back to API version 1.51, which would break the Docker provider on older Docker versions.
 
 ## About
