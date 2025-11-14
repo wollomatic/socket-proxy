@@ -12,6 +12,7 @@
 >      - '-allowHEAD=/_ping'
 >
 >(add /_ping to the allowed requests).
+> 
 >Otherwise, Traefik would fall back to API version 1.51, which would break the Docker provider on older Docker versions.
 
 ## About
