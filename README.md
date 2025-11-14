@@ -12,6 +12,7 @@
 >      - '-allowHEAD=/_ping'
 >
 >(add /_ping to the allowed requests).
+>Otherwise, Traefik would fall back to API version 1.51, which would break the Docker provider on older Docker versions.
 
 ## About
 `socket-proxy` is a lightweight, secure-by-default unix socket proxy. Although it was created to proxy the docker socket to Traefik, it can also be used for other purposes.
