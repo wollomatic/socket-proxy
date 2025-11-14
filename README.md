@@ -4,6 +4,15 @@
 - `wollomatic/socket-proxy:1.10.0` / `ghcr.io/wollomatic/socket-proxy:1.10.0`
 - `wollomatic/socket-proxy:1` / `ghcr.io/wollomatic/socket-proxy:1`
 
+> [!IMPORTANT]
+>## Usage with Traefik => 2.11.31 / => 3.6.1
+>Due to a change how Traefik gets the Docker API version (traefik/traefik#12256), the Socket-Proxy configuraion for Traefik needs to be changed to:
+>
+>      - '-allowGET=(/v1\..{1,2}/(version|containers/.*|events.*))|/_ping'
+>      - '-allowHEAD=/_ping'
+>
+>(add /_ping to the allowed requests).
+
 ## About
 `socket-proxy` is a lightweight, secure-by-default unix socket proxy. Although it was created to proxy the docker socket to Traefik, it can also be used for other purposes.
 It is heavily inspired by [tecnativa/docker-socket-proxy](https://github.com/Tecnativa/docker-socket-proxy).
@@ -19,6 +28,8 @@ The source code is available on [GitHub: wollomatic/socket-proxy](https://github
 
 > [!NOTE]
 > Starting with version 1.6.0, the socket-proxy container image is also available on GHCR.  
+
+Otherwise Traefik would fallback to API version 1.51 which would break it the Docker provider with older Docker versions.
 
 ## Getting Started
 
