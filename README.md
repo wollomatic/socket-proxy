@@ -5,7 +5,7 @@
 - `wollomatic/socket-proxy:1` / `ghcr.io/wollomatic/socket-proxy:1`
 
 > [!IMPORTANT]
->## Usage with Traefik => 2.11.31 / => 3.6.1
+>## Usage with Traefik >= 2.11.31 / >= 3.6.1
 >Due to a change in how Traefik retrieves the Docker API version (traefik/traefik#12256), the Socket-Proxy configuration for Traefik must be updated to allow `HEAD` requests to `/_ping`:
 >
 >      - '-allowHEAD=/_ping'
@@ -27,8 +27,6 @@ The source code is available on [GitHub: wollomatic/socket-proxy](https://github
 
 > [!NOTE]
 > Starting with version 1.6.0, the socket-proxy container image is also available on GHCR.  
-
-Otherwise Traefik would fallback to API version 1.51 which would break it the Docker provider with older Docker versions.
 
 ## Getting Started
 
