@@ -265,7 +265,7 @@ This project is licensed under the MIT License – see the [LICENSE](LICENSE) fi
 Parts of the file `cmd/socket-proxy/bindmount.go` and files under the `internal/docker` and `internal/go-connections` folders are licensed under the Apache 2.0 License.
 See the comments in this file and the LICENSE file for more information.
 
-## Aknowledgements
+## Acknowledgements
 
 + [Chris Wiegman: Protecting Your Docker Socket With Traefik 2](https://chriswiegman.com/2019/11/protecting-your-docker-socket-with-traefik-2/) [@ChrisWiegman](https://github.com/ChrisWiegman)
 + [tecnativa/docker-socket-proxy](https://github.com/Tecnativa/docker-socket-proxy)
