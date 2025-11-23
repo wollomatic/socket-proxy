@@ -97,7 +97,7 @@ const (
 	// "free-form", in which case they're followed by the output of the
 	// health-check output.
 	//
-	// This is far form ideal, and a compromise to allow filtering, and
+	// This is far from ideal, and a compromise to allow filtering, and
 	// to preserve backward-compatibility.
 	ActionHealthStatus          Action = "health_status"
 	ActionHealthStatusRunning   Action = "health_status: running"
