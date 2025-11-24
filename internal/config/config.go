@@ -618,7 +618,7 @@ func getSocketProxyContainerSummary(socketPath, proxyContainerName string) (cont
 	filter := filters.NewArgs()
 	filter.Add("name", proxyContainerName)
 	var containers []container.Summary
-	for i := 1; i < maxTries; i++ {
+	for i := 1; i <= maxTries; i++ {
 		containers, err = dockerClient.ContainerList(ctx, container.ListOptions{Filters: filter})
 		if err != nil {
 			return container.Summary{}, err
