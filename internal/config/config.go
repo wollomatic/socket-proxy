@@ -630,7 +630,7 @@ func getSocketProxyContainerSummary(socketPath, proxyContainerName string) (cont
 			time.Sleep(time.Duration(i) * time.Second)
 		}
 	}
-	return container.Summary{}, fmt.Errorf("socket-proxy container \"%s\" was not found", proxyContainerName)
+	return container.Summary{}, fmt.Errorf("socket-proxy container \"%s\" was not found after %d attempts; verify the container name is correct and the container is running", proxyContainerName, maxTries)
 }
 
 // extract Docker container allowlist label data from the container summary
