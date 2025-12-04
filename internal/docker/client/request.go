@@ -149,7 +149,7 @@ func (cli *Client) checkResponseErr(serverResp *http.Response) (retErr error) {
 	if serverResp.Header.Get("Content-Type") == "application/json" {
 		var errorResponse types.ErrorResponse
 		if err := json.Unmarshal(body, &errorResponse); err != nil {
-			return fmt.Errorf("Error reading JSON: %v", err)
+			return fmt.Errorf("error reading JSON: %v", err)
 		}
 		if errorResponse.Message == "" {
 			// Error-message is empty, which means that we successfully parsed the
