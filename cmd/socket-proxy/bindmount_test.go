@@ -5,8 +5,6 @@ import (
 	"net/http"
 	"runtime"
 	"testing"
-
-	"github.com/wollomatic/socket-proxy/internal/config"
 )
 
 func skipIfNotUnix(t *testing.T) {
@@ -21,9 +19,7 @@ func skipIfNotUnix(t *testing.T) {
 func TestValidateBindMountSource(t *testing.T) {
 	skipIfNotUnix(t)
 
-	cfg = &config.Config{
-		AllowBindMountFrom: []string{"/home", "/var/log"},
-	}
+	allowedBindMounts := []string{"/home", "/var/log"}
 
 	tests := []struct {
 		name       string
@@ -44,7 +40,7 @@ func TestValidateBindMountSource(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := validateBindMountSource(tt.source)
+			err := validateBindMountSource(allowedBindMounts, tt.source)
 			if tt.shouldPass && err != nil {
 				t.Errorf("expected %s to pass, but got error: %v", tt.source, err)
 			}
@@ -83,10 +79,7 @@ func TestIsPathAllowed(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			cfg = &config.Config{
-				AllowBindMountFrom: []string{tt.allowedDir},
-			}
-			err := validateBindMountSource(tt.path)
+			err := validateBindMountSource([]string{tt.allowedDir}, tt.path)
 			if (err == nil) != tt.expected {
 				t.Errorf("isPathAllowed(%s, %s) = %v, expected %v", tt.path, tt.allowedDir, err, tt.expected)
 			}
@@ -97,9 +90,7 @@ func TestIsPathAllowed(t *testing.T) {
 func TestValidateBindMount(t *testing.T) {
 	skipIfNotUnix(t)
 
-	cfg = &config.Config{
-		AllowBindMountFrom: []string{"/home", "/var/log"},
-	}
+	allowedBindMounts := []string{"/home", "/var/log"}
 
 	tests := []struct {
 		name       string
@@ -115,7 +106,7 @@ func TestValidateBindMount(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := validateBindMount(tt.bind)
+			err := validateBindMount(allowedBindMounts, tt.bind)
 			if tt.shouldPass && err != nil {
 				t.Errorf("expected %s to pass, but got error: %v", tt.bind, err)
 			}
@@ -129,9 +120,7 @@ func TestValidateBindMount(t *testing.T) {
 func TestCheckBindMountRestrictions(t *testing.T) {
 	skipIfNotUnix(t)
 
-	cfg = &config.Config{
-		AllowBindMountFrom: []string{"/home"},
-	}
+	allowedBindMounts := []string{"/home"}
 
 	tests := []struct {
 		name       string
@@ -212,7 +201,7 @@ func TestCheckBindMountRestrictions(t *testing.T) {
 				t.Fatalf("failed to create request: %v", err)
 			}
 
-			err = checkBindMountRestrictions(req)
+			err = checkBindMountRestrictions(allowedBindMounts, req)
 			if tt.shouldPass && err != nil {
 				t.Errorf("expected request to pass, but got error: %v", err)
 			}

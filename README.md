@@ -1,8 +1,16 @@
 # socket-proxy
 
 ## Latest image
-- `wollomatic/socket-proxy:1.10.0` / `ghcr.io/wollomatic/socket-proxy:1.10.0`
+- `wollomatic/socket-proxy:1.11.0` / `ghcr.io/wollomatic/socket-proxy:1.11.0`
 - `wollomatic/socket-proxy:1` / `ghcr.io/wollomatic/socket-proxy:1`
+
+> [!IMPORTANT]
+>## Usage with Traefik >= 2.11.31 / >= 3.6.1
+>Due to a change in how Traefik retrieves the Docker API version (traefik/traefik#12256), the Socket-Proxy configuration for Traefik must be updated to allow `HEAD` requests to `/_ping`:
+>
+>      - '-allowHEAD=/_ping'
+>
+>Otherwise, Traefik would fall back to API version 1.51, which would break the Docker provider on older Docker versions.
 
 ## About
 `socket-proxy` is a lightweight, secure-by-default unix socket proxy. Although it was created to proxy the docker socket to Traefik, it can also be used for other purposes.
@@ -13,7 +21,7 @@ As an additional benefit, socket-proxy can be used to examine the API calls of t
 The advantage over other solutions is the very slim container image (from-scratch-image) without any external dependencies (no OS, no packages, just the Go standard library).
 It is designed with security in mind, so there are secure defaults and an additional security layer (IP address-based access control) compared to most other solutions.
 
-The allowlist is configured for each HTTP method separately using the Go regexp syntax, allowing fine-grained control over the allowed HTTP methods.
+The allowlist is configured for each HTTP method separately using the Go regexp syntax, allowing fine-grained control over the allowed HTTP methods. In bridge network mode, each container that uses socket-proxy can be configured with its own allowlist.
 
 The source code is available on [GitHub: wollomatic/socket-proxy](https://github.com/wollomatic/socket-proxy)
 
@@ -33,7 +41,7 @@ You should know what you are doing. Never expose socket-proxy to a public networ
 The container image is available on [Docker Hub (wollomatic/socket-proxy)](https://hub.docker.com/r/wollomatic/socket-proxy) 
 and on the [GitHub Container Registry (ghcr.io/wollomatic/socket-proxy)](https://github.com/wollomatic/socket-proxy/pkgs/container/socket-proxy).
 
-To pin one specific version, use the version tag (for example, `wollomatic/socket-proxy:1.10.0` or `ghcr.io/wollomatic/socket-proxy:1.10.0`).
+To pin one specific version, use the version tag (for example, `wollomatic/socket-proxy:1.11.0` or `ghcr.io/wollomatic/socket-proxy:1.11.0`).
 To always use the most recent version, use the `1` tag (`wollomatic/socket-proxy:1` or `ghcr.io/wollomatic/socket-proxy:1`). This tag will be valid as long as there is no breaking change in the deployment.
 
 There may be an additional docker image with the `testing`-tag. This image is only for testing. Likely, documentation for the `testing` image could only be found in the GitHub commit messages. It is not recommended to use the `testing` image in production.
@@ -74,21 +82,21 @@ Using the hostname is an easy-to-configure way to have more security. Access to 
 
 You must set up regular expressions for each HTTP method the client application needs access to.
 
-The name of a parameter should be "-allow", followed by the HTTP method name (for example, `-allowGET`). The request will be allowed if that parameter is set and the incoming request matches the method and path matching the regexp. If it is not set, then the corresponding HTTP method will not be allowed.
+The name of a parameter should be "-allow", followed by the HTTP method name (for example, `-allowGET`). The request will be allowed if that parameter is set and the incoming request matches the method and path matching the regexp. If unset, the corresponding HTTP method is disallowed.
 
-It is also possible to configure the allowlist via environment variables. The variables are called "SP_ALLOW_", followed by the HTTP method (for example, `SP_ALLLOW_GET`).
+It is also possible to configure the allowlist via environment variables. The variables are called "SP_ALLOW_", followed by the HTTP method (for example, `SP_ALLOW_GET`).
 
-If both commandline parameter and environment variable are configured for a particular HTTP method, the environment variable is ignored.
+If both command-line parameter and environment variable are configured for a particular HTTP method, the environment variable is ignored.
 
-Use Go's regexp syntax to create the patterns for these parameters. To avoid insecure configurations, the characters ^ at the beginning and $ at the end of the string are automatically added. Note: invalid regexp results in program termination.
+Use Go's regexp syntax to create the patterns for these parameters. To avoid insecure configurations, `^` and `$` are added automatically to the start and end of the pattern. Note: invalid regexp results in program termination.
 
-Examples (command line):
+Examples (command-line):
 + `'-allowGET=/v1\..{1,2}/(version|containers/.*|events.*)'` could be used for allowing access to the docker socket for Traefik v2.
-+ `'-allowHEAD=.*` allows all HEAD requests.
++ `'-allowHEAD=.*'` allows all HEAD requests.
 
 Examples (env variables):
 + `'SP_ALLOW_GET="/v1\..{1,2}/(version|containers/.*|events.*)"'` could be used for allowing access to the docker socket for Traefik v2.
-+ `'SP_ALLOW_HEAD=".*"` allows all HEAD requests.
++ `'SP_ALLOW_HEAD=".*"'` allows all HEAD requests.
 
 For more information, refer to the [Go regexp documentation](https://golang.org/pkg/regexp/syntax/).
 
@@ -109,6 +117,27 @@ For example:
 Bind mount restrictions are applied to relevant Docker API endpoints and work with both legacy bind mount syntax (`-v /host/path:/container/path`) and modern mount syntax.
 
 **Note**: This feature only restricts bind mounts. Other mount types (volumes, tmpfs, etc.) are not affected by this restriction.
+
+#### Setting up per-container allowlists
+
+Allowlists for both requests and bind mount restrictions can be specified for particular containers. To do this:
+
+1. Set `-proxycontainername` or the environment variable `SP_PROXYCONTAINERNAME` to the name of the socket proxy container.
+2. Make sure that each container that will use the socket proxy is in a Docker network that the socket proxy container is also in.
+3. Use the same regex syntax for request allowlists and for bind mount restrictions that were discussed earlier, but for labels on each container that will use the socket proxy. Each label name will have the prefix of `socket-proxy.allow.`, with `socket-proxy.allow.bindmountfrom` for bind mount restrictions. For example:
+
+```yaml
+services:
+  traefik:
+    # [...] see github.com/wollomatic/traefik-hardened for a full example
+    networks:
+      - traefik-servicenet # this is the common traefik network
+      - docker-proxynet    # this should be only restricted to traefik and socket-proxy
+    labels:
+      - 'socket-proxy.allow.get=.*' # allow all GET requests to socket-proxy
+```
+
+When this is used, it is not necessary to specify the container in `-allowfrom` as the presence of the allowlist labels will grant corresponding access.
 
 ### Container health check
 
@@ -195,7 +224,7 @@ To log the API calls of the client application, set the log level to `DEBUG` and
 
 ### all parameters and environment variables
 
-socket-proxy can be configured via command line parameters or via environment variables. If both command line parameters and environment variables are set, the environment variable will be ignored.
+socket-proxy can be configured via command-line parameters or via environment variables. If both command-line parameters and environment variables are set, the environment variable will be ignored.
 
 | Parameter                      | Environment Variable             | Default Value          | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
 |--------------------------------|----------------------------------|------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
@@ -203,15 +232,16 @@ socket-proxy can be configured via command line parameters or via environment va
 | `-allowbindmountfrom`          | `SP_ALLOWBINDMOUNTFROM`          | (not set)              | Specifies the directories (comma-separated) that are allowed as bind mount sources. If not set, no bind mount restrictions are applied. When set, only bind mounts from the specified directories or their subdirectories are allowed. Each directory must start with `/`. For example, `-allowbindmountfrom=/home,/var/log` allows bind mounts from `/home`, `/var/log`, and any subdirectories.                                                                                                                                                                                                                                 |
 | `-allowhealthcheck`            | `SP_ALLOWHEALTHCHECK`            | (not set/false)        | If set, it allows the included health check binary to check the socket connection via TCP port 55555 (socket-proxy then listens on `127.0.0.1:55555/health`)                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
 | `-listenip`                    | `SP_LISTENIP`                    | `127.0.0.1`            | Specifies the IP address the server will bind on. Default is only the internal network.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
-| `-logjson`                     | `SP_LOGJSON`                     | (not set/false)        | If set, it enables logging in JSON format. If unset, docker-proxy logs in plain text format.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| `-logjson`                     | `SP_LOGJSON`                     | (not set/false)        | If set, it enables logging in JSON format. If unset, socket-proxy logs in plain text format.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
 | `-loglevel`                    | `SP_LOGLEVEL`                    | `INFO`                 | Sets the log level. Accepted values are: `DEBUG`, `INFO`, `WARN`, `ERROR`.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
 | `-proxyport`                   | `SP_PROXYPORT`                   | `2375`                 | Defines the TCP port the proxy listens to.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
-| `-shutdowngracetime`           | `SP_SHUTDOWNGRACETIME`           | `10`                   | Defines the time in seconds to wait before forcing the shutdown after sigtern or sigint (socket-proxy first tries to graceful shut down the TCP server)                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| `-shutdowngracetime`           | `SP_SHUTDOWNGRACETIME`           | `10`                   | Defines the time in seconds to wait before forcing the shutdown after SIGTERM or SIGINT (socket-proxy first tries to gracefully shut down the TCP server) |                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
 | `-socketpath`                  | `SP_SOCKETPATH`                  | `/var/run/docker.sock` | Specifies the UNIX socket path to connect to. By default, it connects to the Docker daemon socket.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
 | `-stoponwatchdog`              | `SP_STOPONWATCHDOG`              | (not set/false)        | If set, socket-proxy will be stopped if the watchdog detects that the unix socket is not available.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
 | `-watchdoginterval`            | `SP_WATCHDOGINTERVAL`            | `0`                    | Check for socket availability every x seconds (disable checks, if not set or value is 0)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
 | `-proxysocketendpoint`         | `SP_PROXYSOCKETENDPOINT`         | (not set)              | Proxy to the given unix socket instead of a TCP port                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
 | `-proxysocketendpointfilemode` | `SP_PROXYSOCKETENDPOINTFILEMODE` | `0600`                 | Explicitly set the file mode for the filtered unix socket endpoint (only useful with `-proxysocketendpoint`)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| `-proxycontainername`          | `SP_PROXYCONTAINERNAME`          | (not set)              | Provides the name of the socket proxy container to enable per-container allowlists specified by Docker container labels (not available with `-proxysocketendpoint`)                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
 
 ### Changelog
 
@@ -237,13 +267,18 @@ socket-proxy can be configured via command line parameters or via environment va
 
 1.10 - fix socket file mode (thanks [@amanda-wee](https://github.com/amanda-wee)), optimize build actions (thanks [@reneleonhardt](https://github.com/reneleonhardt))
 
+1.11 - add per-container allowlists specified by Docker container labels (thanks [@amanda-wee](https://github.com/amanda-wee))
+
+
 ## License
-This project is licensed under the MIT License – see the [LICENSE](LICENSE) file for details.
 
-Parts of the file `cmd/internal/bindmount.go` are licensed under the Apache 2.0 License.  
-See the comments in this file and the LICENSE file for more information.
+Parts of this project, specifically the file `cmd/socket-proxy/bindmount.go` and
+the files in the `internal/docker` and `internal/go-connections` folders,
+contain source code licensed under the Apache License 2.0. See the comments
+in the applicable files for details.
+The rest of the project is licensed under the MIT License – see the [LICENSE](LICENSE) file for details.
 
-## Aknowledgements
+## Acknowledgements
 
 + [Chris Wiegman: Protecting Your Docker Socket With Traefik 2](https://chriswiegman.com/2019/11/protecting-your-docker-socket-with-traefik-2/) [@ChrisWiegman](https://github.com/ChrisWiegman)
 + [tecnativa/docker-socket-proxy](https://github.com/Tecnativa/docker-socket-proxy)
