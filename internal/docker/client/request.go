@@ -181,7 +181,7 @@ func (cli *Client) checkResponseErr(serverResp *http.Response) (retErr error) {
 		// situations where a proxy is involved, returning a HTML response.
 		daemonErr = errors.New(strings.TrimSpace(string(body)))
 	}
-	return fmt.Errorf("Error response from daemon: %v", daemonErr)
+	return fmt.Errorf("error response from daemon: %v", daemonErr)
 }
 
 func (cli *Client) addHeaders(req *http.Request, headers http.Header) *http.Request {
