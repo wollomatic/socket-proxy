@@ -126,7 +126,7 @@ Allowlists for both requests and bind mount restrictions can be specified for pa
 2. Make sure that each container that will use the socket proxy is in a Docker network that the socket proxy container is also in.
 3. Use the same regex syntax for request allowlists and for bind mount restrictions that were discussed earlier, but for labels on each container that will use the socket proxy. Each label name will have the prefix of `socket-proxy.allow.`, with `socket-proxy.allow.bindmountfrom` for bind mount restrictions. For example:
 
-``` compose.yaml
+```yaml
 services:
   traefik:
     # [...] see github.com/wollomatic/traefik-hardened for a full example
