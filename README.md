@@ -84,7 +84,7 @@ You must set up regular expressions for each HTTP method the client application 
 
 The name of a parameter should be "-allow", followed by the HTTP method name (for example, `-allowGET`). The request will be allowed if that parameter is set and the incoming request matches the method and path matching the regexp. If it is not set, then the corresponding HTTP method will not be allowed.
 
-It is also possible to configure the allowlist via environment variables. The variables are called "SP_ALLOW_", followed by the HTTP method (for example, `SP_ALLLOW_GET`).
+It is also possible to configure the allowlist via environment variables. The variables are called "SP_ALLOW_", followed by the HTTP method (for example, `SP_ALLOW_GET`).
 
 If both commandline parameter and environment variable are configured for a particular HTTP method, the environment variable is ignored.
 
