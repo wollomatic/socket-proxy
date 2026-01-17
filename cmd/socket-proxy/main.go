@@ -56,6 +56,11 @@ func main() {
 	}
 	slog.SetDefault(logger)
 
+	// setup non-default allowlists
+	if cfg.ProxySocketEndpoint == "" && cfg.ProxyContainerName != "" {
+		go cfg.UpdateAllowLists()
+	}
+
 	// print configuration
 	slog.Info("starting socket-proxy", "version", version, "os", runtime.GOOS, "arch", runtime.GOARCH, "runtime", runtime.Version(), "URL", programURL)
 	if cfg.ProxySocketEndpoint == "" {
@@ -71,26 +76,18 @@ func main() {
 	} else {
 		slog.Info("watchdog disabled")
 	}
-	if len(cfg.AllowBindMountFrom) > 0 {
-		slog.Info("Docker bind mount restrictions enabled", "allowbindmountfrom", cfg.AllowBindMountFrom)
+	if len(cfg.ProxyContainerName) > 0 {
+		slog.Info("Proxy container name provided", "proxycontainername", cfg.ProxyContainerName)
+		slog.Info("per-container allowlists enabled!")
 	} else {
-		// we only log this on DEBUG level because bind mount restrictions are a very special use case
-		slog.Debug("no Docker bind mount restrictions")
+		// we only log this on DEBUG level because providing the socket-proxy container name
+		// enables the use of labels to specify per-container allowlists
+		slog.Debug("no proxy container name provided")
 	}
+	cfg.AllowLists.PrintNetworks()
 
-	// print request allowlist
-	if cfg.LogJSON {
-		for method, regex := range cfg.AllowedRequests {
-			slog.Info("configured allowed request", "method", method, "regex", regex)
-		}
-	} else {
-		// don't use slog here, as we want to print the regexes as they are
-		// see https://github.com/wollomatic/socket-proxy/issues/11
-		fmt.Printf("Request allowlist:\n   %-8s %s\n", "Method", "Regex")
-		for method, regex := range cfg.AllowedRequests {
-			fmt.Printf("   %-8s %s\n", method, regex)
-		}
-	}
+	// print default request allowlist
+	cfg.AllowLists.PrintDefault(cfg.LogJSON)
 
 	// check if the socket is available
 	err = checkSocketAvailability(cfg.SocketPath)
