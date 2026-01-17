@@ -78,6 +78,7 @@ func main() {
 	}
 	if len(cfg.ProxyContainerName) > 0 {
 		slog.Info("Proxy container name provided", "proxycontainername", cfg.ProxyContainerName)
+		slog.Info("per-container allowlists enabled!")
 	} else {
 		// we only log this on DEBUG level because providing the socket-proxy container name
 		// enables the use of labels to specify per-container allowlists
