@@ -1,7 +1,7 @@
 # socket-proxy
 
 ## Latest image
-- `wollomatic/socket-proxy:1.11.0` / `ghcr.io/wollomatic/socket-proxy:1.11.0`
+- `wollomatic/socket-proxy:1.11.1` / `ghcr.io/wollomatic/socket-proxy:1.11.1`
 - `wollomatic/socket-proxy:1` / `ghcr.io/wollomatic/socket-proxy:1`
 
 > [!IMPORTANT]
