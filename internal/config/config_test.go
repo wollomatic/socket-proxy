@@ -56,17 +56,6 @@ func Test_extractLabelData(t *testing.T) {
 				"GET": {regexp.MustCompile("^regex1$")},
 			},
 		},
-		{
-			name: "allow* labels with bindmount",
-			cntr: container.Summary{
-				Labels: map[string]string{
-					"socket-proxy.allow.get": "regex1",
-				},
-			},
-			want: map[string][]*regexp.Regexp{
-				"GET": {regexp.MustCompile("^regex1$")},
-			},
-		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
