@@ -212,35 +212,6 @@ networks:
     internal: true
 ```
 
-### Example for multiple times `-allow*`
-
-```
-``` compose.yaml
-services:
-  dockerproxy:
-    image: wollomatic/socket-proxy:<<version>> # choose most recent image
-    restart: unless-stopped
-    user: "65534:<<your docker group id>>"
-    mem_limit: 64M
-    read_only: true
-    cap_drop:
-      - ALL
-    security_opt:
-      - no-new-privileges
-    command:
-      - '-loglevel=info'
-      - '-listenip=0.0.0.0'
-      - '-allowfrom=traefik' # allow only hostname "traefik" to connect
-      - '-allowGET=/v1\..{1,2}/(version|containers/.*|events.*)'
-      - '-allowbindmountfrom=/var/log,/tmp' # restrict bind mounts to specific directories
-      - '-watchdoginterval=3600' # check once per hour for socket availability
-      - '-stoponwatchdog' # halt program on error and let compose restart it
-      - '-shutdowngracetime=5' # wait 5 seconds before shutting down
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock:ro
-
-```
-
 ### Examining the API calls of the client application
 
 To log the API calls of the client application, set the log level to `DEBUG` and allow all requests. Then, you can examine the log output to determine which requests the client application makes. Allowing all requests can be done by setting the following parameters:
