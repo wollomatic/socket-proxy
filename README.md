@@ -101,7 +101,6 @@ Examples (env variables):
 + `'SP_ALLOW_HEAD=".*"'` allows all HEAD requests.
 + `'SP_ALLOW_GET="/version" SP_ALLOW_GET_2=/_ping'` allow use `GET` multiple times
 
-
 For more information, refer to the [Go regexp documentation](https://golang.org/pkg/regexp/syntax/).
 
 An excellent online regexp tester is [regex101.com](https://regex101.com/).
