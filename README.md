@@ -139,7 +139,7 @@ services:
     labels:
       - 'socket-proxy.allow.get=.*' # allow all GET requests to socket-proxy
       - 'socket-proxy.allow.head=/version' # HEAD `/version` requests to socket-proxy
-      - 'socket-proxy.allow.post.1=/exec' # another HEAD `exec` requests to socket-proxy
+      - 'socket-proxy.allow.head.1=/exec' # another HEAD `exec` requests to socket-proxy
 ```
 
 When this is used, it is not necessary to specify the container in `-allowfrom` as the presence of the allowlist labels will grant corresponding access.
