@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"regexp"
 
 	"github.com/wollomatic/socket-proxy/internal/config"
 )
@@ -24,7 +25,7 @@ func handleHTTPRequest(w http.ResponseWriter, r *http.Request) {
 		communicateBlockedRequest(w, r, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	if !allowed.MatchString(r.URL.Path) { // path does not match regex -> not allowed
+	if !matchURL(allowed, r.URL.Path) { // path does not match regex -> not allowed
 		communicateBlockedRequest(w, r, "path not allowed", http.StatusForbidden)
 		return
 	}
@@ -38,6 +39,15 @@ func handleHTTPRequest(w http.ResponseWriter, r *http.Request) {
 	// finally, log and proxy the request
 	slog.Debug("allowed request", "method", r.Method, "URL", r.URL, "client", r.RemoteAddr)
 	socketProxy.ServeHTTP(w, r) // proxy the request
+}
+
+func matchURL(allowedURIs []*regexp.Regexp, requestURI string) bool {
+	for _, allowedURI := range allowedURIs {
+		if allowedURI.MatchString(requestURI) {
+			return true
+		}
+	}
+	return false
 }
 
 // return the relevant allowlist
