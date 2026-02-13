@@ -650,11 +650,13 @@ func extractLabelData(cntr container.Summary) (map[string][]*regexp.Regexp, []st
 				// allowSpec starts with the method name like  socket-proxy.allow.get.1
 				return strings.HasPrefix(allowSpec, rx.method)
 			}) {
-				r, err := compileRegexp(labelValue, allowSpec, "docker container label")
+				// extract the method name from allowSpec
+				method, _, _ := strings.Cut(allowSpec, ".")
+				r, err := compileRegexp(labelValue, method, "docker container label")
 				if err != nil {
 					return nil, nil, err
 				}
-				allowedRequests[allowSpec] = append(allowedRequests[allowSpec], r)
+				allowedRequests[method] = append(allowedRequests[method], r)
 			} else if allowSpec == "BINDMOUNTFROM" {
 				var err error
 				allowedBindMounts, err = parseAllowedBindMounts(labelValue)

@@ -21,7 +21,6 @@ func getAllowFromEnv(env []string) map[string][]string {
 				// optional number suffix after method
 				method, _, _ := strings.Cut(key, "_")
 				result[method] = append(result[method], value)
-
 			}
 		}
 	}
