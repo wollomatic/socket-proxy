@@ -72,18 +72,15 @@ func (cli *Client) doRequest(req *http.Request) (*http.Response, error) {
 			return nil, err
 		}
 
-		var uErr *url.Error
-		if errors.As(err, &uErr) {
-			var nErr *net.OpError
-			if errors.As(uErr.Err, &nErr) {
+		if uErr, ok := errors.AsType[*url.Error](err); ok {
+			if nErr, ok2 := errors.AsType[*net.OpError](uErr.Err); ok2 {
 				if os.IsPermission(nErr.Err) {
 					return nil, errConnectionFailed{fmt.Errorf("permission denied while trying to connect to the Docker daemon socket at %v: %v", cli.host, err)}
 				}
 			}
 		}
 
-		var nErr net.Error
-		if errors.As(err, &nErr) {
+		if nErr, ok := errors.AsType[net.Error](err); ok {
 			if nErr.Timeout() {
 				return nil, connectionFailed(cli.host)
 			}
