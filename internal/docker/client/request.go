@@ -64,7 +64,7 @@ func (cli *Client) sendRequest(ctx context.Context, method, path string, query u
 }
 
 func (cli *Client) doRequest(req *http.Request) (*http.Response, error) {
-	resp, err := cli.client.Do(req)
+	resp, err := cli.client.Do(req) // #nosec G704 - Request target is always the specified socket
 	if err != nil {
 		// Don't decorate context sentinel errors; users may be comparing to
 		// them directly.
