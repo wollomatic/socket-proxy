@@ -36,8 +36,8 @@ func handleHTTPRequest(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// finally, log and proxy the request
-	slog.Debug("allowed request", "method", r.Method, "URL", r.URL, "client", r.RemoteAddr)
-	socketProxy.ServeHTTP(w, r) // proxy the request
+	slog.Debug("allowed request", "method", r.Method, "URL", r.URL, "client", r.RemoteAddr) // #nosec G706 - structured logging (slog) safely encodes values
+	socketProxy.ServeHTTP(w, r)                                                             // #nosec G704 - Request target is always the specified socket
 }
 
 // return the relevant allowlist
@@ -46,7 +46,7 @@ func determineAllowList(r *http.Request) (config.AllowList, bool) {
 		// Get the client IP address from the remote address string
 		clientIPStr, _, err := net.SplitHostPort(r.RemoteAddr)
 		if err != nil {
-			slog.Warn("cannot get valid IP address from request", "reason", err, "method", r.Method, "URL", r.URL, "client", r.RemoteAddr)
+			slog.Warn("cannot get valid IP address from request", "reason", err, "method", r.Method, "URL", r.URL, "client", r.RemoteAddr) // #nosec G706 - structured logging (slog) safely encodes values
 			return config.AllowList{}, false
 		}
 
@@ -61,7 +61,7 @@ func determineAllowList(r *http.Request) (config.AllowList, bool) {
 		// Check if client is allowed for the default allowlist:
 		allowedIP, err := isAllowedClient(clientIPStr)
 		if err != nil {
-			slog.Warn("cannot get valid IP address for client allowlist check", "reason", err, "method", r.Method, "URL", r.URL, "client", r.RemoteAddr)
+			slog.Warn("cannot get valid IP address for client allowlist check", "reason", err, "method", r.Method, "URL", r.URL, "client", r.RemoteAddr) // #nosec G706 - structured logging (slog) safely encodes values
 		}
 		if !allowedIP {
 			return config.AllowList{}, false
@@ -115,6 +115,6 @@ func sendHTTPError(w http.ResponseWriter, status int) {
 
 // communicateBlockedRequest logs a blocked request and sends a HTTP error.
 func communicateBlockedRequest(w http.ResponseWriter, r *http.Request, reason string, status int) {
-	slog.Warn("blocked request", "reason", reason, "method", r.Method, "URL", r.URL, "client", r.RemoteAddr, "response", status)
+	slog.Warn("blocked request", "reason", reason, "method", r.Method, "URL", r.URL, "client", r.RemoteAddr, "response", status) // #nosec G706 - structured logging (slog) safely encodes values
 	sendHTTPError(w, status)
 }
