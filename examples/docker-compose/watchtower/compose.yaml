@@ -10,6 +10,7 @@ services:
       - '-allowGET=/v1\..{2}/(containers/.*|images/.*)'
       - '-allowPOST=/v1\..{2}/(containers/.*|images/.*|networks/.*)'
       - '-allowDELETE=/v1\..{2}/(containers/.*|images/.*)'
+      - '-allowHEAD=/_ping'
       # check socket connection every hour and stop the proxy if it fails (will then be restarted by docker):
       - '-watchdoginterval=3600'
       - '-stoponwatchdog'
@@ -29,7 +30,8 @@ services:
       - docker-proxynet
 
   watchtower:
-    image: containrrr/watchtower:1.7.1
+    # image: containrrr/watchtower:1.7.1
+    image: ghcr.io/nicholas-fedor/watchtower:1.14.2 # the containrrr repo is no longer maintained
     depends_on:
       - dockerproxy
     command:
