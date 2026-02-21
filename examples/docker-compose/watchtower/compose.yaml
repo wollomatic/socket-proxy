@@ -32,7 +32,7 @@ services:
   watchtower:
     # image: containrrr/watchtower:1.7.1
     # https://github.com/containrrr/watchtower was archived on December 17, 2025.
-    # https://github.com/nicholas-fedor/watchtower ist a maintained fork.
+    # https://github.com/nicholas-fedor/watchtower is a maintained fork.
     image: ghcr.io/nicholas-fedor/watchtower:1.14.2 # the containrrr repo is no longer maintained
     depends_on:
       - dockerproxy
