@@ -1,3 +1,3 @@
 module github.com/wollomatic/socket-proxy
 
-go 1.22.6
+go 1.26.0

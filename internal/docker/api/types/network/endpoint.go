@@ -20,6 +20,5 @@ type EndpointSettings struct {
 
 // Copy makes a deep copy of `EndpointSettings`
 func (es *EndpointSettings) Copy() *EndpointSettings {
-	epCopy := *es
-	return &epCopy
+	return new(*es)
 }
