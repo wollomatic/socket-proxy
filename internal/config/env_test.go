@@ -28,7 +28,7 @@ func Test_getAllowFromEnv(t *testing.T) {
 			want: map[string][]string{"GET": {"/path/one", "/path/two"}},
 		},
 		{
-			name: "multiple entries for one method",
+			name: "multiple entries for one method with non-sequential index",
 			env:  []string{"SP_ALLOW_GET=/path/one", "SP_ALLOW_GET_2=/path/two"},
 			want: map[string][]string{"GET": {"/path/one", "/path/two"}},
 		},
