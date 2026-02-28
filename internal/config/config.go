@@ -161,10 +161,10 @@ func InitConfig() (*Config, error) {
 		defaultProxyContainerName = val
 	}
 
+	// multiple values per method
+	// like SP_ALLOW_GET_0, SP_ALLOW_GET_1, ...
+	allowFromEnv := getAllowFromEnv(os.Environ())
 	for i := range mr {
-		// multiple values per method
-		// like SP_ALLOW_GET_0, SP_ALLOW_GET_1, ...
-		allowFromEnv := getAllowFromEnv(os.Environ())
 		if val, ok := allowFromEnv[mr[i].method]; ok && len(val) > 0 {
 			for _, v := range val {
 				mr[i].regexStrings = append(mr[i].regexStrings, param{value: v, from: fromEnv})
