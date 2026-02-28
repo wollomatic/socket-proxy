@@ -69,7 +69,7 @@ func Test_extractLabelData(t *testing.T) {
 			if tt.wantErr {
 				t.Fatal("extractLabelData() succeeded unexpectedly")
 			}
-			if !reflect.DeepEqual(got, tt.want) {
+			if !regexMapsEqual(got, tt.want) {
 				t.Errorf("extractLabelData() = %v, want %v", got, tt.want)
 			}
 			if !reflect.DeepEqual(got2, tt.want2) {
@@ -77,4 +77,22 @@ func Test_extractLabelData(t *testing.T) {
 			}
 		})
 	}
+}
+
+func regexMapsEqual(a, b map[string][]*regexp.Regexp) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for method, aRegexes := range a {
+		bRegexes, ok := b[method]
+		if !ok || len(aRegexes) != len(bRegexes) {
+			return false
+		}
+		for i, ar := range aRegexes {
+			if ar.String() != bRegexes[i].String() {
+				return false
+			}
+		}
+	}
+	return true
 }
