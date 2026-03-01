@@ -67,22 +67,20 @@ type AllowListRegistry struct {
 }
 
 type AllowList struct {
-	ID                string                    // Container ID (empty for the default allowlist)
-	AllowedRequests   map[string]*regexp.Regexp // map of request methods to request path regex patterns (no requests allowed if empty)
-	AllowedBindMounts []string                  // list of from portion of allowed bind mounts (all bind mounts allowed if empty)
+	ID                string                      // Container ID (empty for the default allowlist)
+	AllowedRequests   map[string][]*regexp.Regexp // map of request methods to request path regex patterns (no requests allowed if empty)
+	AllowedBindMounts []string                    // list of from portion of allowed bind mounts (all bind mounts allowed if empty)
 }
 
 // used for list of allowed requests
 type methodRegex struct {
-	method               string
-	regexStringFromEnv   string
-	regexStringFromParam string
+	method       string
+	regexStrings arrayParams
 }
 
 // mr is the allowlist of requests per http method
-// default: regexStringFromEnv and regexStringFromParam are empty, so regexCompiled stays nil and the request is blocked
-// if regexStringParam is set with a command line parameter, all requests matching the method and path matching the regex are allowed
-// else if regexStringEnv from Environment ist checked
+// default: regexStrings are empty, so regexCompiled stays nil and the request is blocked
+// if regexStrings is set, all requests matching the method and path matching the regex are allowed
 var mr = []methodRegex{
 	{method: http.MethodGet},
 	{method: http.MethodHead},
@@ -163,9 +161,14 @@ func InitConfig() (*Config, error) {
 		defaultProxyContainerName = val
 	}
 
+	// multiple values per method
+	// like SP_ALLOW_GET_0, SP_ALLOW_GET_1, ...
+	allowFromEnv := getAllowFromEnv(os.Environ())
 	for i := range mr {
-		if val, ok := os.LookupEnv("SP_ALLOW_" + mr[i].method); ok && val != "" {
-			mr[i].regexStringFromEnv = val
+		if val, ok := allowFromEnv[mr[i].method]; ok && len(val) > 0 {
+			for _, v := range val {
+				mr[i].regexStrings = append(mr[i].regexStrings, param{value: v, from: fromEnv})
+			}
 		}
 	}
 
@@ -190,7 +193,7 @@ func InitConfig() (*Config, error) {
 	flag.StringVar(&allowBindMountFromString, "allowbindmountfrom", defaultAllowBindMountFrom, "allowed directories for bind mounts (comma-separated)")
 	flag.StringVar(&cfg.ProxyContainerName, "proxycontainername", defaultProxyContainerName, "socket-proxy Docker container name")
 	for i := range mr {
-		flag.StringVar(&mr[i].regexStringFromParam, "allow"+mr[i].method, "", "regex for "+mr[i].method+" requests (not set means method is not allowed)")
+		flag.Var(&mr[i].regexStrings, "allow"+mr[i].method, "regex for "+mr[i].method+" requests (not set means method is not allowed)")
 	}
 	flag.Parse()
 
@@ -245,20 +248,23 @@ func InitConfig() (*Config, error) {
 	cfg.ProxySocketEndpointFileMode = os.FileMode(uint32(endpointFileMode))
 
 	// compile regexes for default allowed requests
-	cfg.AllowLists.Default.AllowedRequests = make(map[string]*regexp.Regexp)
+	cfg.AllowLists.Default.AllowedRequests = make(map[string][]*regexp.Regexp)
 	for _, rx := range mr {
-		if rx.regexStringFromParam != "" {
-			r, err := compileRegexp(rx.regexStringFromParam, rx.method, "command line parameter")
-			if err != nil {
-				return nil, err
+		for _, regexString := range rx.regexStrings {
+			if regexString.value != "" {
+				location := ""
+				switch regexString.from {
+				case fromEnv:
+					location = "env variable"
+				case fromParam:
+					location = "command line parameter"
+				}
+				r, err := compileRegexp(regexString.value, rx.method, location)
+				if err != nil {
+					return nil, err
+				}
+				cfg.AllowLists.Default.AllowedRequests[rx.method] = append(cfg.AllowLists.Default.AllowedRequests[rx.method], r)
 			}
-			cfg.AllowLists.Default.AllowedRequests[rx.method] = r
-		} else if rx.regexStringFromEnv != "" {
-			r, err := compileRegexp(rx.regexStringFromEnv, rx.method, "env variable")
-			if err != nil {
-				return nil, err
-			}
-			cfg.AllowLists.Default.AllowedRequests[rx.method] = r
 		}
 	}
 
@@ -634,18 +640,23 @@ func getSocketProxyContainerSummary(socketPath, proxyContainerName string) (cont
 }
 
 // extract Docker container allowlist label data from the container summary
-func extractLabelData(cntr container.Summary) (map[string]*regexp.Regexp, []string, error) {
-	allowedRequests := make(map[string]*regexp.Regexp)
+func extractLabelData(cntr container.Summary) (map[string][]*regexp.Regexp, []string, error) {
+	allowedRequests := make(map[string][]*regexp.Regexp)
 	var allowedBindMounts []string
 	for labelName, labelValue := range cntr.Labels {
 		if strings.HasPrefix(labelName, allowedDockerLabelPrefix) && labelValue != "" {
 			allowSpec := strings.ToUpper(strings.TrimPrefix(labelName, allowedDockerLabelPrefix))
-			if slices.ContainsFunc(mr, func(rx methodRegex) bool { return rx.method == allowSpec }) {
-				r, err := compileRegexp(labelValue, allowSpec, "docker container label")
+			if slices.ContainsFunc(mr, func(rx methodRegex) bool {
+				// allowSpec starts with the method name like  socket-proxy.allow.get.1
+				return strings.HasPrefix(allowSpec, rx.method)
+			}) {
+				// extract the method name from allowSpec
+				method, _, _ := strings.Cut(allowSpec, ".")
+				r, err := compileRegexp(labelValue, method, "docker container label")
 				if err != nil {
 					return nil, nil, err
 				}
-				allowedRequests[allowSpec] = r
+				allowedRequests[method] = append(allowedRequests[method], r)
 			} else if allowSpec == "BINDMOUNTFROM" {
 				var err error
 				allowedBindMounts, err = parseAllowedBindMounts(labelValue)
