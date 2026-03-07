@@ -11,10 +11,10 @@ As no breaking changes to existing features are planned, only the most recent ve
 
 The docker images are signed with cosign. The public key is available in the repository, on [https://wollomatic.de/socket-proxy/cosign.pub](https://wollomatic.de/socket-proxy/cosign.pub) and here:
 ```
-- - -----BEGIN PUBLIC KEY-----
+- - - -----BEGIN PUBLIC KEY-----
 MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEYdXlfRbkO6KqPU7Khn1mSjbOIaD3
 um421A0NeT1wi840iWNp6MVKyj3tpnAyaQcLgd5/22O+eEHY+5+EHwB+eA==
-- - -----END PUBLIC KEY-----
+- - - -----END PUBLIC KEY-----
 ```
 
 The signature is stored at Docker hub as well. For more information about cosign, see [https://github.com/sigstore/cosign#readme](https://github.com/sigstore/cosign#readme).
@@ -24,9 +24,9 @@ The signature is stored at Docker hub as well. For more information about cosign
 Please report vulnerabilities to git2026(at)wollomatic.dev
 
 Feel free to encrypt the message if you like:
-[Download PGP public key 9123F130](http://wollomatic.dev/gpg/9123F130.gpg.asc)
+[Download PGP public key 9123F130](https://wollomatic.dev/gpg/9123F130.gpg.asc)
 ```
-- - - -----BEGIN PGP PUBLIC KEY BLOCK-----
+- - - - -----BEGIN PGP PUBLIC KEY BLOCK-----
 Comment: Benutzer-ID:	<security2025(at)wollomatic.de>
 Comment: Gültig seit:	30.12.2021 18:15
 Comment: Gültig bis:	31.12.2025 12:00
@@ -83,12 +83,12 @@ AGx0J/IYKvNwbYErCoOsqM78lZZ20hvKwDCW1jNEZibqiL98yhQhoEymTu9FHShR
 WrjWE3RoPNCEPKwCVSh08Y/bVcUyfkDNKkN3l8lT34TIEUOkzdXD2JLL6cogLpn2
 Q/PCqEw9
 =6UYI
-- - - -----END PGP PUBLIC KEY BLOCK-----
+- - - - -----END PGP PUBLIC KEY BLOCK-----
 ```
 -----BEGIN PGP SIGNATURE-----
 
-iHUEARYKAB0WIQQX7u5MQzQWc4kIq7Te/gx2oe2rbQUCaayYSQAKCRDe/gx2oe2r
-bS2sAP4kY96akK4rUfUhzAnerKF0pw/LV0u6xvNzPNMb9WuPJQD8Cu2ZwsFXDfel
-PpKQUQl3LrP4Jc56U3+HCsDyKgRT6gw=
-=mFlT
+iHUEARYKAB0WIQQX7u5MQzQWc4kIq7Te/gx2oe2rbQUCaaybJwAKCRDe/gx2oe2r
+bYhkAQCRbh/Bn1+/7sFlP2jU9BKfNUkSy/Ss5PA9DpYlHu4SaAD/RJXH70xYb7jW
+t90C39ppKOCFyshcaTWPGWmE5treYQo=
+=er7Z
 -----END PGP SIGNATURE-----
