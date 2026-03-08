@@ -86,7 +86,10 @@ func isAllowedClient(clientIPStr string) (bool, error) {
 		_, allowedIPNet, err := net.ParseCIDR(allowFromItem)
 		if err == nil {
 			// AllowFrom is a valid CIDR, so check if IP address is in allowed network
-			return allowedIPNet.Contains(clientIP), nil
+			if allowedIPNet.Contains(clientIP) {
+				return true, nil
+			}
+			continue
 		}
 
 		// AllowFrom is not a valid CIDR, so try to resolve it via DNS
