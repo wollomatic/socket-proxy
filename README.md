@@ -1,7 +1,7 @@
 # socket-proxy
 
 ## Latest image
-- `wollomatic/socket-proxy:1.11.3` / `ghcr.io/wollomatic/socket-proxy:1.11.3`
+- `wollomatic/socket-proxy:1.12.0` / `ghcr.io/wollomatic/socket-proxy:1.12.0`
 - `wollomatic/socket-proxy:1` / `ghcr.io/wollomatic/socket-proxy:1`
 
 > [!IMPORTANT]
@@ -27,7 +27,6 @@ The source code is available on [GitHub: wollomatic/socket-proxy](https://github
 
 > [!NOTE]
 > Starting with version 1.6.0, the socket-proxy container image is also available on GHCR.  
-> Starting with version todo, the socket-proxy can set multiple times -allow* in params or environment of docker labels
 
 ## Getting Started
 
@@ -106,6 +105,9 @@ For more information, refer to the [Go regexp documentation](https://golang.org/
 An excellent online regexp tester is [regex101.com](https://regex101.com/).
 
 To determine which HTTP requests your client application uses, you could switch socket-proxy to debug log level and look at the log output while allowing all requests in a secure environment.
+
+> [!NOTE]
+> Starting with version 1.12.0, the socket-proxy can set multiple -allow* in params, environment, or docker labels.
 
 #### Setting up bind mount restrictions
 
@@ -274,6 +276,7 @@ socket-proxy can be configured via command-line parameters or via environment va
 
 1.11 - add per-container allowlists specified by Docker container labels (thanks [@amanda-wee](https://github.com/amanda-wee))
 
+1.12 - support use of allow* multiple times in env, flag and docker labels (thanks [@qianlongzt](https://github.com/qianlongzt))
 
 ## License
 
