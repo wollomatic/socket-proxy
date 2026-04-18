@@ -93,12 +93,12 @@ Use Go's regexp syntax to create the patterns for these parameters. To avoid ins
 Examples (command-line):
 + `'-allowGET=/v1\..{1,2}/(version|containers/.*|events.*)'` could be used for allowing access to the docker socket for Traefik v2.
 + `'-allowHEAD=.*'` allows all HEAD requests.
-+ `'-allowGET=/version' '-allowGET=/_ping'` allow use `GET` multiple times
++ `'-allowGET=/version -allowGET=/_ping'` use allow `GET` multiple times
 
 Examples (env variables):
 + `'SP_ALLOW_GET="/v1\..{1,2}/(version|containers/.*|events.*)"'` could be used for allowing access to the docker socket for Traefik v2.
 + `'SP_ALLOW_HEAD=".*"'` allows all HEAD requests.
-+ `'SP_ALLOW_GET="/version" SP_ALLOW_GET_2=/_ping'` allow use `GET` multiple times
++ `'SP_ALLOW_GET="/version" SP_ALLOW_GET_2="/_ping"'` use allow `GET` multiple times
 
 For more information, refer to the [Go regexp documentation](https://golang.org/pkg/regexp/syntax/).
 
