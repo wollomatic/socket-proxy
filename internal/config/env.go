@@ -4,7 +4,7 @@ import (
 	"strings"
 )
 
-const sp_allowPrefix = "SP_ALLOW_"
+const spAllowPrefix = "SP_ALLOW_"
 
 // getAllowFromEnv reads allowlist regex strings from environment variables.
 //
@@ -15,7 +15,7 @@ const sp_allowPrefix = "SP_ALLOW_"
 func getAllowFromEnv(env []string) map[string][]string {
 	result := make(map[string][]string)
 	for _, v := range env {
-		if v, ok := strings.CutPrefix(v, sp_allowPrefix); ok {
+		if v, ok := strings.CutPrefix(v, spAllowPrefix); ok {
 			key, value, found := strings.Cut(v, "=")
 			if found {
 				// optional number suffix after method

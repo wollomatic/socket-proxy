@@ -24,11 +24,6 @@ type KeyValuePair struct {
 	Value string
 }
 
-// Arg creates a new KeyValuePair for initializing Args
-func Arg(key, value string) KeyValuePair {
-	return KeyValuePair{Key: key, Value: value}
-}
-
 // NewArgs returns a new Args populated with the initial args
 func NewArgs(initialArgs ...KeyValuePair) Args {
 	args := Args{fields: map[string]map[string]bool{}}
@@ -62,30 +57,6 @@ func ToJSON(a Args) (string, error) {
 	}
 	buf, err := json.Marshal(a)
 	return string(buf), err
-}
-
-// FromJSON decodes a JSON encoded string into Args
-func FromJSON(p string) (Args, error) {
-	args := NewArgs()
-
-	if p == "" {
-		return args, nil
-	}
-
-	raw := []byte(p)
-	err := json.Unmarshal(raw, &args)
-	if err == nil {
-		return args, nil
-	}
-
-	// Fallback to parsing arguments in the legacy slice format
-	deprecated := map[string][]string{}
-	if legacyErr := json.Unmarshal(raw, &deprecated); legacyErr != nil {
-		return args, &invalidFilter{}
-	}
-
-	args.fields = deprecatedArgs(deprecated)
-	return args, nil
 }
 
 // UnmarshalJSON populates the Args from JSON encode bytes
@@ -290,16 +261,4 @@ func (args Args) Clone() (newArgs Args) {
 		newArgs.fields[k] = mm
 	}
 	return newArgs
-}
-
-func deprecatedArgs(d map[string][]string) map[string]map[string]bool {
-	m := map[string]map[string]bool{}
-	for k, v := range d {
-		values := map[string]bool{}
-		for _, vv := range v {
-			values[vv] = true
-		}
-		m[k] = values
-	}
-	return m
 }
