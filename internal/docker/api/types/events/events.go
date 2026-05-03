@@ -10,21 +10,6 @@ import "github.com/wollomatic/socket-proxy/internal/docker/api/types/filters"
 // Type is used for event-types.
 type Type string
 
-// List of known event types.
-const (
-	BuilderEventType   Type = "builder"   // BuilderEventType is the event type that the builder generates.
-	ConfigEventType    Type = "config"    // ConfigEventType is the event type that configs generate.
-	ContainerEventType Type = "container" // ContainerEventType is the event type that containers generate.
-	DaemonEventType    Type = "daemon"    // DaemonEventType is the event type that daemon generate.
-	ImageEventType     Type = "image"     // ImageEventType is the event type that images generate.
-	NetworkEventType   Type = "network"   // NetworkEventType is the event type that networks generate.
-	NodeEventType      Type = "node"      // NodeEventType is the event type that nodes generate.
-	PluginEventType    Type = "plugin"    // PluginEventType is the event type that plugins generate.
-	SecretEventType    Type = "secret"    // SecretEventType is the event type that secrets generate.
-	ServiceEventType   Type = "service"   // ServiceEventType is the event type that services generate.
-	VolumeEventType    Type = "volume"    // VolumeEventType is the event type that volumes generate.
-)
-
 // Action is used for event-actions.
 type Action string
 

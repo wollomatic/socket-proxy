@@ -8,7 +8,6 @@ package sockets
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"net"
 	"net/http"
@@ -20,9 +19,6 @@ const (
 	defaultTimeout        = 10 * time.Second
 	maxUnixSocketPathSize = len(syscall.RawSockaddrUnix{}.Path)
 )
-
-// ErrProtocolNotAvailable is returned when a given transport protocol is not provided by the operating system.
-var ErrProtocolNotAvailable = errors.New("protocol not available")
 
 // ConfigureTransport configures the specified [http.Transport] according to the specified proto
 // and addr.
