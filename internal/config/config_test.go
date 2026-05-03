@@ -6,6 +6,7 @@ import (
 	"os"
 	"reflect"
 	"regexp"
+	"sort"
 	"strconv"
 	"testing"
 
@@ -108,8 +109,18 @@ func regexMapsEqual(a, b map[string][]*regexp.Regexp) bool {
 		if !ok || len(aRegexes) != len(bRegexes) {
 			return false
 		}
-		for i, ar := range aRegexes {
-			if ar.String() != bRegexes[i].String() {
+		aRegexStrings := make([]string, 0, len(aRegexes))
+		for _, ar := range aRegexes {
+			aRegexStrings = append(aRegexStrings, ar.String())
+		}
+		bRegexStrings := make([]string, 0, len(bRegexes))
+		for _, br := range bRegexes {
+			bRegexStrings = append(bRegexStrings, br.String())
+		}
+		sort.Strings(aRegexStrings)
+		sort.Strings(bRegexStrings)
+		for i, ar := range aRegexStrings {
+			if ar != bRegexStrings[i] {
 				return false
 			}
 		}

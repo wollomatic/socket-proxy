@@ -93,12 +93,12 @@ Use Go's regexp syntax to create the patterns for these parameters. To avoid ins
 Examples (command-line):
 + `'-allowGET=/v1\..{1,2}/(version|containers/.*|events.*)'` could be used for allowing access to the docker socket for Traefik v2.
 + `'-allowHEAD=.*'` allows all HEAD requests.
-+ `'-allowGET=/version -allowGET=/_ping'` use allow `GET` multiple times
++ `'-allowGET=/version -allowGET=/_ping'` supports using `-allowGET` multiple times
 
 Examples (env variables):
 + `'SP_ALLOW_GET="/v1\..{1,2}/(version|containers/.*|events.*)"'` could be used for allowing access to the docker socket for Traefik v2.
 + `'SP_ALLOW_HEAD=".*"'` allows all HEAD requests.
-+ `'SP_ALLOW_GET="/version" SP_ALLOW_GET_2="/_ping"'` use allow `GET` multiple times
++ `'SP_ALLOW_GET="/version" SP_ALLOW_GET_2="/_ping"'` supports multiple `SP_ALLOW_GET` entries
 
 For more information, refer to the [Go regexp documentation](https://golang.org/pkg/regexp/syntax/).
 
@@ -107,7 +107,7 @@ An excellent online regexp tester is [regex101.com](https://regex101.com/).
 To determine which HTTP requests your client application uses, you could switch socket-proxy to debug log level and look at the log output while allowing all requests in a secure environment.
 
 > [!NOTE]
-> Starting with version 1.12.0, the socket-proxy can set multiple -allow* in params, environment, or docker labels.
+> Starting with version 1.12.0, the socket-proxy supports using multiple -allow* entries in params, environment, or docker labels.
 
 #### Setting up bind mount restrictions
 
