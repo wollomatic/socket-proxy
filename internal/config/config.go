@@ -26,7 +26,7 @@ import (
 
 const allowedDockerLabelPrefix = "socket-proxy.allow."
 
-var (
+const (
 	defaultAllowFrom                   = "127.0.0.1/32"         // allowed IPs to connect to the proxy
 	defaultAllowHealthcheck            = false                  // allow health check requests (HEAD http://localhost:55555/health)
 	defaultLogJSON                     = false                  // if true, log in JSON format
@@ -67,130 +67,142 @@ type AllowListRegistry struct {
 }
 
 type AllowList struct {
-	ID                string                    // Container ID (empty for the default allowlist)
-	AllowedRequests   map[string]*regexp.Regexp // map of request methods to request path regex patterns (no requests allowed if empty)
-	AllowedBindMounts []string                  // list of from portion of allowed bind mounts (all bind mounts allowed if empty)
+	ID                string                      // Container ID (empty for the default allowlist)
+	AllowedRequests   map[string][]*regexp.Regexp // map of request methods to request path regex patterns (no requests allowed if empty)
+	AllowedBindMounts []string                    // list of from portion of allowed bind mounts (all bind mounts allowed if empty)
 }
 
 // used for list of allowed requests
 type methodRegex struct {
-	method               string
-	regexStringFromEnv   string
-	regexStringFromParam string
+	method       string
+	regexStrings arrayParams
 }
 
-// mr is the allowlist of requests per http method
-// default: regexStringFromEnv and regexStringFromParam are empty, so regexCompiled stays nil and the request is blocked
-// if regexStringParam is set with a command line parameter, all requests matching the method and path matching the regex are allowed
-// else if regexStringEnv from Environment ist checked
-var mr = []methodRegex{
-	{method: http.MethodGet},
-	{method: http.MethodHead},
-	{method: http.MethodPost},
-	{method: http.MethodPut},
-	{method: http.MethodPatch},
-	{method: http.MethodDelete},
-	{method: http.MethodConnect},
-	{method: http.MethodTrace},
-	{method: http.MethodOptions},
+var supportedHTTPMethods = []string{
+	http.MethodGet,
+	http.MethodHead,
+	http.MethodPost,
+	http.MethodPut,
+	http.MethodPatch,
+	http.MethodDelete,
+	http.MethodConnect,
+	http.MethodTrace,
+	http.MethodOptions,
 }
 
+// InitConfig reads configuration from environment variables and command-line
+// flags, validates the resulting values, and returns the initialized Config.
 func InitConfig() (*Config, error) {
 	var (
-		cfg                      Config
-		allowFromString          string
-		listenIP                 string
-		proxyPort                uint
-		logLevel                 string
-		endpointFileMode         uint
-		allowBindMountFromString string
+		cfg                                     Config
+		allowFromString                         string
+		listenIP                                string
+		proxyPort                               uint
+		logLevel                                string
+		endpointFileMode                        uint
+		allowBindMountFromString                string
+		defaultAllowFromValue                   = defaultAllowFrom
+		defaultAllowHealthcheckValue            = defaultAllowHealthcheck
+		defaultLogJSONValue                     = defaultLogJSON
+		defaultListenIPValue                    = defaultListenIP
+		defaultLogLevelValue                    = defaultLogLevel
+		defaultProxyPortValue                   = defaultProxyPort
+		defaultShutdownGraceTimeValue           = defaultShutdownGraceTime
+		defaultSocketPathValue                  = defaultSocketPath
+		defaultStopOnWatchdogValue              = defaultStopOnWatchdog
+		defaultWatchdogIntervalValue            = defaultWatchdogInterval
+		defaultProxySocketEndpointValue         = defaultProxySocketEndpoint
+		defaultProxySocketEndpointFileModeValue = defaultProxySocketEndpointFileMode
+		defaultAllowBindMountFromValue          = defaultAllowBindMountFrom
+		defaultProxyContainerNameValue          = defaultProxyContainerName
 	)
 
 	if val, ok := os.LookupEnv("SP_ALLOWFROM"); ok && val != "" {
-		defaultAllowFrom = val
+		defaultAllowFromValue = val
 	}
 	if val, ok := os.LookupEnv("SP_ALLOWHEALTHCHECK"); ok {
 		if parsedVal, err := strconv.ParseBool(val); err == nil {
-			defaultAllowHealthcheck = parsedVal
+			defaultAllowHealthcheckValue = parsedVal
 		}
 	}
 	if val, ok := os.LookupEnv("SP_LOGJSON"); ok {
 		if parsedVal, err := strconv.ParseBool(val); err == nil {
-			defaultLogJSON = parsedVal
+			defaultLogJSONValue = parsedVal
 		}
 	}
 	if val, ok := os.LookupEnv("SP_LISTENIP"); ok && val != "" {
-		defaultListenIP = val
+		defaultListenIPValue = val
 	}
 	if val, ok := os.LookupEnv("SP_LOGLEVEL"); ok && val != "" {
-		defaultLogLevel = val
+		defaultLogLevelValue = val
 	}
 	if val, ok := os.LookupEnv("SP_PROXYPORT"); ok && val != "" {
 		if parsedVal, err := strconv.ParseUint(val, 10, 32); err == nil {
-			defaultProxyPort = uint(parsedVal)
+			defaultProxyPortValue = uint(parsedVal)
 		}
 	}
 	if val, ok := os.LookupEnv("SP_SHUTDOWNGRACETIME"); ok && val != "" {
 		if parsedVal, err := strconv.ParseUint(val, 10, 32); err == nil {
-			defaultShutdownGraceTime = uint(parsedVal)
+			defaultShutdownGraceTimeValue = uint(parsedVal)
 		}
 	}
 	if val, ok := os.LookupEnv("SP_SOCKETPATH"); ok && val != "" {
-		defaultSocketPath = val
+		defaultSocketPathValue = val
 	}
 	if val, ok := os.LookupEnv("SP_STOPONWATCHDOG"); ok {
 		if parsedVal, err := strconv.ParseBool(val); err == nil {
-			defaultStopOnWatchdog = parsedVal
+			defaultStopOnWatchdogValue = parsedVal
 		}
 	}
 	if val, ok := os.LookupEnv("SP_WATCHDOGINTERVAL"); ok && val != "" {
 		if parsedVal, err := strconv.ParseUint(val, 10, 32); err == nil {
-			defaultWatchdogInterval = uint(parsedVal)
+			defaultWatchdogIntervalValue = uint(parsedVal)
 		}
 	}
 	if val, ok := os.LookupEnv("SP_PROXYSOCKETENDPOINT"); ok && val != "" {
-		defaultProxySocketEndpoint = val
+		defaultProxySocketEndpointValue = val
 	}
 	if val, ok := os.LookupEnv("SP_PROXYSOCKETENDPOINTFILEMODE"); ok {
 		if parsedVal, err := strconv.ParseUint(val, 8, 32); err == nil {
-			defaultProxySocketEndpointFileMode = uint(parsedVal)
+			defaultProxySocketEndpointFileModeValue = uint(parsedVal)
 		}
 	}
 	if val, ok := os.LookupEnv("SP_ALLOWBINDMOUNTFROM"); ok && val != "" {
-		defaultAllowBindMountFrom = val
+		defaultAllowBindMountFromValue = val
 	}
 	if val, ok := os.LookupEnv("SP_PROXYCONTAINERNAME"); ok && val != "" {
-		defaultProxyContainerName = val
+		defaultProxyContainerNameValue = val
 	}
 
-	for i := range mr {
-		if val, ok := os.LookupEnv("SP_ALLOW_" + mr[i].method); ok && val != "" {
-			mr[i].regexStringFromEnv = val
+	methodAllowLists := newMethodRegexes()
+
+	// multiple values per method
+	// like SP_ALLOW_GET_0, SP_ALLOW_GET_1, ...
+	allowFromEnv := getAllowFromEnv(os.Environ())
+	for i := range methodAllowLists {
+		if val, ok := allowFromEnv[methodAllowLists[i].method]; ok && len(val) > 0 {
+			for _, v := range val {
+				methodAllowLists[i].regexStrings = append(methodAllowLists[i].regexStrings, param{value: v, from: fromEnv})
+			}
 		}
 	}
 
-	flag.StringVar(&allowFromString, "allowfrom", defaultAllowFrom, "allowed IPs or hostname to connect to the proxy")
-	flag.BoolVar(&cfg.AllowHealthcheck, "allowhealthcheck", defaultAllowHealthcheck, "allow health check requests (HEAD http://localhost:55555/health)")
-	flag.BoolVar(&cfg.LogJSON, "logjson", defaultLogJSON, "log in JSON format (otherwise log in plain text")
-	flag.StringVar(&listenIP, "listenip", defaultListenIP, "ip address to listen on")
-	flag.StringVar(&logLevel, "loglevel", defaultLogLevel, "set log level: DEBUG, INFO, WARN, ERROR")
-	flag.UintVar(&proxyPort, "proxyport", defaultProxyPort, "tcp port to listen on")
-	flag.UintVar(&cfg.ShutdownGraceTime, "shutdowngracetime", defaultShutdownGraceTime, "maximum time in seconds to wait for the server to shut down gracefully")
-	if cfg.ShutdownGraceTime > math.MaxInt {
-		return nil, fmt.Errorf("shutdowngracetime has to be smaller than %d", math.MaxInt) // this maximum value has no practical significance
-	}
-	flag.StringVar(&cfg.SocketPath, "socketpath", defaultSocketPath, "unix socket path to connect to")
-	flag.BoolVar(&cfg.StopOnWatchdog, "stoponwatchdog", defaultStopOnWatchdog, "stop the program when the socket gets unavailable (otherwise log only)")
-	flag.UintVar(&cfg.WatchdogInterval, "watchdoginterval", defaultWatchdogInterval, "watchdog interval in seconds (0 to disable)")
-	if cfg.WatchdogInterval > math.MaxInt {
-		return nil, fmt.Errorf("watchdoginterval has to be smaller than %d", math.MaxInt) // this maximum value has no practical significance
-	}
-	flag.StringVar(&cfg.ProxySocketEndpoint, "proxysocketendpoint", defaultProxySocketEndpoint, "unix socket endpoint (if set, used instead of the TCP listener)")
-	flag.UintVar(&endpointFileMode, "proxysocketendpointfilemode", defaultProxySocketEndpointFileMode, "set the file mode of the unix socket endpoint")
-	flag.StringVar(&allowBindMountFromString, "allowbindmountfrom", defaultAllowBindMountFrom, "allowed directories for bind mounts (comma-separated)")
-	flag.StringVar(&cfg.ProxyContainerName, "proxycontainername", defaultProxyContainerName, "socket-proxy Docker container name")
-	for i := range mr {
-		flag.StringVar(&mr[i].regexStringFromParam, "allow"+mr[i].method, "", "regex for "+mr[i].method+" requests (not set means method is not allowed)")
+	flag.StringVar(&allowFromString, "allowfrom", defaultAllowFromValue, "allowed IPs or hostname to connect to the proxy")
+	flag.BoolVar(&cfg.AllowHealthcheck, "allowhealthcheck", defaultAllowHealthcheckValue, "allow health check requests (HEAD http://localhost:55555/health)")
+	flag.BoolVar(&cfg.LogJSON, "logjson", defaultLogJSONValue, "log in JSON format (otherwise log in plain text")
+	flag.StringVar(&listenIP, "listenip", defaultListenIPValue, "ip address to listen on")
+	flag.StringVar(&logLevel, "loglevel", defaultLogLevelValue, "set log level: DEBUG, INFO, WARN, ERROR")
+	flag.UintVar(&proxyPort, "proxyport", defaultProxyPortValue, "tcp port to listen on")
+	flag.UintVar(&cfg.ShutdownGraceTime, "shutdowngracetime", defaultShutdownGraceTimeValue, "maximum time in seconds to wait for the server to shut down gracefully")
+	flag.StringVar(&cfg.SocketPath, "socketpath", defaultSocketPathValue, "unix socket path to connect to")
+	flag.BoolVar(&cfg.StopOnWatchdog, "stoponwatchdog", defaultStopOnWatchdogValue, "stop the program when the socket gets unavailable (otherwise log only)")
+	flag.UintVar(&cfg.WatchdogInterval, "watchdoginterval", defaultWatchdogIntervalValue, "watchdog interval in seconds (0 to disable)")
+	flag.StringVar(&cfg.ProxySocketEndpoint, "proxysocketendpoint", defaultProxySocketEndpointValue, "unix socket endpoint (if set, used instead of the TCP listener)")
+	flag.UintVar(&endpointFileMode, "proxysocketendpointfilemode", defaultProxySocketEndpointFileModeValue, "set the file mode of the unix socket endpoint")
+	flag.StringVar(&allowBindMountFromString, "allowbindmountfrom", defaultAllowBindMountFromValue, "allowed directories for bind mounts (comma-separated)")
+	flag.StringVar(&cfg.ProxyContainerName, "proxycontainername", defaultProxyContainerNameValue, "socket-proxy Docker container name")
+	for i := range methodAllowLists {
+		flag.Var(&methodAllowLists[i].regexStrings, "allow"+methodAllowLists[i].method, "regex for "+methodAllowLists[i].method+" requests (not set means method is not allowed)")
 	}
 	flag.Parse()
 
@@ -212,6 +224,12 @@ func InitConfig() (*Config, error) {
 	// check listenIP and proxyPort
 	if proxyPort < 1 || proxyPort > 65535 {
 		return nil, errors.New("port number has to be between 1 and 65535")
+	}
+	if cfg.ShutdownGraceTime > math.MaxInt {
+		return nil, fmt.Errorf("shutdowngracetime has to be smaller than %d", math.MaxInt) // this maximum value has no practical significance
+	}
+	if cfg.WatchdogInterval > math.MaxInt {
+		return nil, fmt.Errorf("watchdoginterval has to be smaller than %d", math.MaxInt) // this maximum value has no practical significance
 	}
 	ip := net.ParseIP(listenIP)
 	if ip == nil {
@@ -245,20 +263,23 @@ func InitConfig() (*Config, error) {
 	cfg.ProxySocketEndpointFileMode = os.FileMode(uint32(endpointFileMode))
 
 	// compile regexes for default allowed requests
-	cfg.AllowLists.Default.AllowedRequests = make(map[string]*regexp.Regexp)
-	for _, rx := range mr {
-		if rx.regexStringFromParam != "" {
-			r, err := compileRegexp(rx.regexStringFromParam, rx.method, "command line parameter")
-			if err != nil {
-				return nil, err
+	cfg.AllowLists.Default.AllowedRequests = make(map[string][]*regexp.Regexp)
+	for _, rx := range methodAllowLists {
+		for _, regexString := range effectiveMethodParams(rx.regexStrings) {
+			if regexString.value != "" {
+				location := ""
+				switch regexString.from {
+				case fromEnv:
+					location = "env variable"
+				case fromParam:
+					location = "command line parameter"
+				}
+				r, err := compileRegexp(regexString.value, rx.method, location)
+				if err != nil {
+					return nil, err
+				}
+				cfg.AllowLists.Default.AllowedRequests[rx.method] = append(cfg.AllowLists.Default.AllowedRequests[rx.method], r)
 			}
-			cfg.AllowLists.Default.AllowedRequests[rx.method] = r
-		} else if rx.regexStringFromEnv != "" {
-			r, err := compileRegexp(rx.regexStringFromEnv, rx.method, "env variable")
-			if err != nil {
-				return nil, err
-			}
-			cfg.AllowLists.Default.AllowedRequests[rx.method] = r
 		}
 	}
 
@@ -287,7 +308,12 @@ func (cfg *Config) UpdateAllowLists() {
 		slog.Error("failed to create Docker client", "error", err)
 		return
 	}
-	defer dockerClient.Close()
+	defer func(dockerClient *client.Client) {
+		err := dockerClient.Close()
+		if err != nil {
+			slog.Error("failed to close Docker client", "error", err)
+		}
+	}(dockerClient)
 
 	err = cfg.AllowLists.initByIP(ctx, dockerClient)
 	if err != nil {
@@ -575,6 +601,25 @@ func compileRegexp(regex, method, configLocation string) (*regexp.Regexp, error)
 	return r, nil
 }
 
+// newMethodRegexes returns one methodRegex entry for each supported HTTP method.
+func newMethodRegexes() []methodRegex {
+	methods := make([]methodRegex, 0, len(supportedHTTPMethods))
+	for _, method := range supportedHTTPMethods {
+		methods = append(methods, methodRegex{method: method})
+	}
+	return methods
+}
+
+// effectiveMethodParams returns the parameters that should be applied for one
+// HTTP method, preferring command-line values over environment values when both
+// are present.
+func effectiveMethodParams(params arrayParams) []param {
+	if slices.ContainsFunc(params, func(p param) bool { return p.from == fromParam }) {
+		return slices.DeleteFunc(slices.Clone(params), func(p param) bool { return p.from == fromEnv })
+	}
+	return params
+}
+
 // parse bind mount from string into list of allowed bind mounts
 func parseAllowedBindMounts(allowBindMountFromString string) ([]string, error) {
 	allowedBindMounts := strings.Split(allowBindMountFromString, ",")
@@ -612,7 +657,12 @@ func getSocketProxyContainerSummary(socketPath, proxyContainerName string) (cont
 	if err != nil {
 		return container.Summary{}, err
 	}
-	defer dockerClient.Close()
+	defer func(dockerClient *client.Client) {
+		err := dockerClient.Close()
+		if err != nil {
+			slog.Error("failed to close Docker client", "error", err)
+		}
+	}(dockerClient)
 
 	ctx := context.Background()
 	filter := filters.NewArgs()
@@ -634,18 +684,23 @@ func getSocketProxyContainerSummary(socketPath, proxyContainerName string) (cont
 }
 
 // extract Docker container allowlist label data from the container summary
-func extractLabelData(cntr container.Summary) (map[string]*regexp.Regexp, []string, error) {
-	allowedRequests := make(map[string]*regexp.Regexp)
+func extractLabelData(cntr container.Summary) (map[string][]*regexp.Regexp, []string, error) {
+	allowedRequests := make(map[string][]*regexp.Regexp)
 	var allowedBindMounts []string
 	for labelName, labelValue := range cntr.Labels {
 		if strings.HasPrefix(labelName, allowedDockerLabelPrefix) && labelValue != "" {
 			allowSpec := strings.ToUpper(strings.TrimPrefix(labelName, allowedDockerLabelPrefix))
-			if slices.ContainsFunc(mr, func(rx methodRegex) bool { return rx.method == allowSpec }) {
-				r, err := compileRegexp(labelValue, allowSpec, "docker container label")
+			if slices.ContainsFunc(supportedHTTPMethods, func(method string) bool {
+				// allowSpec starts with the method name like  socket-proxy.allow.get.1
+				return strings.HasPrefix(allowSpec, method)
+			}) {
+				// extract the method name from allowSpec
+				method, _, _ := strings.Cut(allowSpec, ".")
+				r, err := compileRegexp(labelValue, method, "docker container label")
 				if err != nil {
 					return nil, nil, err
 				}
-				allowedRequests[allowSpec] = r
+				allowedRequests[method] = append(allowedRequests[method], r)
 			} else if allowSpec == "BINDMOUNTFROM" {
 				var err error
 				allowedBindMounts, err = parseAllowedBindMounts(labelValue)
