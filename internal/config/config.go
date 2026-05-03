@@ -690,12 +690,8 @@ func extractLabelData(cntr container.Summary) (map[string][]*regexp.Regexp, []st
 	for labelName, labelValue := range cntr.Labels {
 		if strings.HasPrefix(labelName, allowedDockerLabelPrefix) && labelValue != "" {
 			allowSpec := strings.ToUpper(strings.TrimPrefix(labelName, allowedDockerLabelPrefix))
-			if slices.ContainsFunc(supportedHTTPMethods, func(method string) bool {
-				// allowSpec starts with the method name like  socket-proxy.allow.get.1
-				return strings.HasPrefix(allowSpec, method)
-			}) {
-				// extract the method name from allowSpec
-				method, _, _ := strings.Cut(allowSpec, ".")
+			method, _, _ := strings.Cut(allowSpec, ".")
+			if slices.Contains(supportedHTTPMethods, method) {
 				r, err := compileRegexp(labelValue, method, "docker container label")
 				if err != nil {
 					return nil, nil, err
