@@ -80,7 +80,7 @@ func Test_extractLabelData(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, got2, gotErr := extractLabelData(tt.cntr)
+			got, got2, _, gotErr := extractLabelData(tt.cntr)
 			if gotErr != nil {
 				if !tt.wantErr {
 					t.Errorf("extractLabelData() failed: %v", gotErr)
@@ -147,6 +147,170 @@ func TestInitConfig_AllowMethodFlagOverridesEnv(t *testing.T) {
 	}
 	if regexes[0].MatchString("/from-env") {
 		t.Fatalf("expected env GET regex to be ignored when flag is present, got %q", regexes[0].String())
+	}
+}
+
+func TestInitConfig_DenyHostConfigFlags(t *testing.T) {
+	restore := resetFlagsForTest(t, []string{
+		"socket-proxy",
+		"-denyprivileged",
+		"-denycapadd",
+		"-denyhostnamespaces",
+	})
+	defer restore()
+
+	cfg, err := InitConfig()
+	if err != nil {
+		t.Fatalf("InitConfig() error = %v", err)
+	}
+	if !cfg.AllowLists.Default.DenyPrivileged {
+		t.Error("expected DenyPrivileged=true")
+	}
+	if !cfg.AllowLists.Default.DenyCapAdd {
+		t.Error("expected DenyCapAdd=true")
+	}
+	if !cfg.AllowLists.Default.DenyHostNamespaces {
+		t.Error("expected DenyHostNamespaces=true")
+	}
+}
+
+func TestInitConfig_DenyHostConfigEnvVars(t *testing.T) {
+	t.Setenv("SP_DENYPRIVILEGED", "true")
+	t.Setenv("SP_DENYCAPADD", "1")
+	t.Setenv("SP_DENYHOSTNAMESPACES", "TRUE")
+	restore := resetFlagsForTest(t, []string{"socket-proxy"})
+	defer restore()
+
+	cfg, err := InitConfig()
+	if err != nil {
+		t.Fatalf("InitConfig() error = %v", err)
+	}
+	if !cfg.AllowLists.Default.DenyPrivileged {
+		t.Error("expected DenyPrivileged=true via env")
+	}
+	if !cfg.AllowLists.Default.DenyCapAdd {
+		t.Error("expected DenyCapAdd=true via env")
+	}
+	if !cfg.AllowLists.Default.DenyHostNamespaces {
+		t.Error("expected DenyHostNamespaces=true via env")
+	}
+}
+
+func TestInitConfig_DenyHostConfigDefaultsFalse(t *testing.T) {
+	restore := resetFlagsForTest(t, []string{"socket-proxy"})
+	defer restore()
+
+	cfg, err := InitConfig()
+	if err != nil {
+		t.Fatalf("InitConfig() error = %v", err)
+	}
+	if cfg.AllowLists.Default.DenyPrivileged {
+		t.Error("expected DenyPrivileged=false by default")
+	}
+	if cfg.AllowLists.Default.DenyCapAdd {
+		t.Error("expected DenyCapAdd=false by default")
+	}
+	if cfg.AllowLists.Default.DenyHostNamespaces {
+		t.Error("expected DenyHostNamespaces=false by default")
+	}
+}
+
+func Test_extractLabelData_DenyLabels(t *testing.T) {
+	tests := []struct {
+		name    string
+		labels  map[string]string
+		want    denyLabels
+		wantErr bool
+	}{
+		{
+			name:   "no deny labels",
+			labels: map[string]string{"socket-proxy.allow.get": "/.*"},
+			want:   denyLabels{},
+		},
+		{
+			name: "deny privileged true",
+			labels: map[string]string{
+				"socket-proxy.deny.privileged": "true",
+			},
+			want: denyLabels{Privileged: true},
+		},
+		{
+			name: "deny capadd 1",
+			labels: map[string]string{
+				"socket-proxy.deny.capadd": "1",
+			},
+			want: denyLabels{CapAdd: true},
+		},
+		{
+			name: "deny hostnamespaces true",
+			labels: map[string]string{
+				"socket-proxy.deny.hostnamespaces": "TRUE",
+			},
+			want: denyLabels{HostNamespaces: true},
+		},
+		{
+			name: "all deny labels",
+			labels: map[string]string{
+				"socket-proxy.deny.privileged":     "true",
+				"socket-proxy.deny.capadd":         "true",
+				"socket-proxy.deny.hostnamespaces": "true",
+			},
+			want: denyLabels{Privileged: true, CapAdd: true, HostNamespaces: true},
+		},
+		{
+			name: "deny false is treated as not set",
+			labels: map[string]string{
+				"socket-proxy.deny.privileged": "false",
+			},
+			want: denyLabels{},
+		},
+		{
+			name: "invalid deny value returns error",
+			labels: map[string]string{
+				"socket-proxy.deny.privileged": "yes",
+			},
+			wantErr: true,
+		},
+		{
+			name: "unknown deny key ignored",
+			labels: map[string]string{
+				"socket-proxy.deny.unknown": "true",
+			},
+			want: denyLabels{},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, _, got, gotErr := extractLabelData(container.Summary{Labels: tt.labels})
+			if tt.wantErr {
+				if gotErr == nil {
+					t.Fatal("expected error, got nil")
+				}
+				return
+			}
+			if gotErr != nil {
+				t.Fatalf("unexpected error: %v", gotErr)
+			}
+			if got != tt.want {
+				t.Errorf("got %+v, want %+v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestDenyLabelsAny(t *testing.T) {
+	if (denyLabels{}).any() {
+		t.Error("empty denyLabels should not be any()")
+	}
+	if !(denyLabels{Privileged: true}).any() {
+		t.Error("denyLabels{Privileged} should be any()")
+	}
+	if !(denyLabels{CapAdd: true}).any() {
+		t.Error("denyLabels{CapAdd} should be any()")
+	}
+	if !(denyLabels{HostNamespaces: true}).any() {
+		t.Error("denyLabels{HostNamespaces} should be any()")
 	}
 }
 

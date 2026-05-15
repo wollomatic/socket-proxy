@@ -201,7 +201,7 @@ func TestCheckBindMountRestrictions(t *testing.T) {
 				t.Fatalf("failed to create request: %v", err)
 			}
 
-			err = checkBindMountRestrictions(allowedBindMounts, req)
+			err = checkHostConfigRestrictions(allowedBindMounts, hostConfigPolicy{}, req)
 			if tt.shouldPass && err != nil {
 				t.Errorf("expected request to pass, but got error: %v", err)
 			}
@@ -209,5 +209,230 @@ func TestCheckBindMountRestrictions(t *testing.T) {
 				t.Errorf("expected request to fail, but it passed")
 			}
 		})
+	}
+}
+
+func TestCheckHostConfigSecurity(t *testing.T) {
+	skipIfNotUnix(t)
+
+	tests := []struct {
+		name       string
+		policy     hostConfigPolicy
+		hostConfig containerHostConfig
+		shouldPass bool
+	}{
+		{
+			name:       "zero policy accepts everything",
+			policy:     hostConfigPolicy{},
+			hostConfig: containerHostConfig{Privileged: true, CapAdd: []string{"SYS_ADMIN"}, NetworkMode: "host"},
+			shouldPass: true,
+		},
+		{
+			name:       "deny privileged rejects privileged",
+			policy:     hostConfigPolicy{DenyPrivileged: true},
+			hostConfig: containerHostConfig{Privileged: true},
+			shouldPass: false,
+		},
+		{
+			name:       "deny privileged allows non-privileged",
+			policy:     hostConfigPolicy{DenyPrivileged: true},
+			hostConfig: containerHostConfig{Privileged: false},
+			shouldPass: true,
+		},
+		{
+			name:       "deny capadd rejects non-empty CapAdd",
+			policy:     hostConfigPolicy{DenyCapAdd: true},
+			hostConfig: containerHostConfig{CapAdd: []string{"NET_ADMIN"}},
+			shouldPass: false,
+		},
+		{
+			name:       "deny capadd allows empty CapAdd",
+			policy:     hostConfigPolicy{DenyCapAdd: true},
+			hostConfig: containerHostConfig{CapAdd: nil},
+			shouldPass: true,
+		},
+		{
+			name:       "deny host namespaces rejects NetworkMode=host",
+			policy:     hostConfigPolicy{DenyHostNamespaces: true},
+			hostConfig: containerHostConfig{NetworkMode: "host"},
+			shouldPass: false,
+		},
+		{
+			name:       "deny host namespaces rejects PidMode=host",
+			policy:     hostConfigPolicy{DenyHostNamespaces: true},
+			hostConfig: containerHostConfig{PidMode: "host"},
+			shouldPass: false,
+		},
+		{
+			name:       "deny host namespaces rejects IpcMode=host",
+			policy:     hostConfigPolicy{DenyHostNamespaces: true},
+			hostConfig: containerHostConfig{IpcMode: "host"},
+			shouldPass: false,
+		},
+		{
+			name:       "deny host namespaces rejects UTSMode=host",
+			policy:     hostConfigPolicy{DenyHostNamespaces: true},
+			hostConfig: containerHostConfig{UTSMode: "host"},
+			shouldPass: false,
+		},
+		{
+			name:       "deny host namespaces rejects UsernsMode=host",
+			policy:     hostConfigPolicy{DenyHostNamespaces: true},
+			hostConfig: containerHostConfig{UsernsMode: "host"},
+			shouldPass: false,
+		},
+		{
+			name:       "deny host namespaces rejects host: prefix",
+			policy:     hostConfigPolicy{DenyHostNamespaces: true},
+			hostConfig: containerHostConfig{NetworkMode: "host:eth0"},
+			shouldPass: false,
+		},
+		{
+			name:       "deny host namespaces allows bridge",
+			policy:     hostConfigPolicy{DenyHostNamespaces: true},
+			hostConfig: containerHostConfig{NetworkMode: "bridge"},
+			shouldPass: true,
+		},
+		{
+			name:       "deny host namespaces allows container: prefix",
+			policy:     hostConfigPolicy{DenyHostNamespaces: true},
+			hostConfig: containerHostConfig{NetworkMode: "container:abc123"},
+			shouldPass: true,
+		},
+		{
+			name:       "all flags compose - rejects on any violation",
+			policy:     hostConfigPolicy{DenyPrivileged: true, DenyCapAdd: true, DenyHostNamespaces: true},
+			hostConfig: containerHostConfig{Privileged: false, CapAdd: []string{"SYS_PTRACE"}, NetworkMode: "bridge"},
+			shouldPass: false,
+		},
+		{
+			name:       "all flags compose - accepts when none violated",
+			policy:     hostConfigPolicy{DenyPrivileged: true, DenyCapAdd: true, DenyHostNamespaces: true},
+			hostConfig: containerHostConfig{Privileged: false, CapAdd: nil, NetworkMode: "bridge"},
+			shouldPass: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := checkHostConfigSecurity(tt.policy, &tt.hostConfig)
+			if tt.shouldPass && err != nil {
+				t.Errorf("expected to pass, got error: %v", err)
+			}
+			if !tt.shouldPass && err == nil {
+				t.Errorf("expected to fail, but it passed")
+			}
+		})
+	}
+}
+
+func TestCheckHostConfigRestrictionsWithPolicy(t *testing.T) {
+	skipIfNotUnix(t)
+
+	tests := []struct {
+		name            string
+		method          string
+		path            string
+		body            string
+		policy          hostConfigPolicy
+		allowBindMounts []string
+		shouldPass      bool
+	}{
+		{
+			name:       "container create privileged rejected",
+			method:     "POST",
+			path:       "/v1.40/containers/create",
+			body:       `{"HostConfig":{"Privileged":true}}`,
+			policy:     hostConfigPolicy{DenyPrivileged: true},
+			shouldPass: false,
+		},
+		{
+			name:       "container create non-privileged allowed",
+			method:     "POST",
+			path:       "/v1.40/containers/create",
+			body:       `{"HostConfig":{"Privileged":false}}`,
+			policy:     hostConfigPolicy{DenyPrivileged: true},
+			shouldPass: true,
+		},
+		{
+			name:       "container update with capadd rejected",
+			method:     "POST",
+			path:       "/v1.40/containers/abc/update",
+			body:       `{"HostConfig":{"CapAdd":["SYS_ADMIN"]}}`,
+			policy:     hostConfigPolicy{DenyCapAdd: true},
+			shouldPass: false,
+		},
+		{
+			name:       "container create host network rejected",
+			method:     "POST",
+			path:       "/v1.40/containers/create",
+			body:       `{"HostConfig":{"NetworkMode":"host"}}`,
+			policy:     hostConfigPolicy{DenyHostNamespaces: true},
+			shouldPass: false,
+		},
+		{
+			name:            "bind + policy: both violated picks bind error first",
+			method:          "POST",
+			path:            "/v1.40/containers/create",
+			body:            `{"HostConfig":{"Binds":["/etc:/app"],"Privileged":true}}`,
+			policy:          hostConfigPolicy{DenyPrivileged: true},
+			allowBindMounts: []string{"/home"},
+			shouldPass:      false,
+		},
+		{
+			name:       "no policy, no bind mounts: parsing skipped",
+			method:     "POST",
+			path:       "/v1.40/containers/create",
+			body:       `{"HostConfig":{"Privileged":true}}`,
+			policy:     hostConfigPolicy{},
+			shouldPass: true,
+		},
+		{
+			name:       "GET request bypasses policy check",
+			method:     "GET",
+			path:       "/v1.40/containers/json",
+			body:       "",
+			policy:     hostConfigPolicy{DenyPrivileged: true, DenyCapAdd: true, DenyHostNamespaces: true},
+			shouldPass: true,
+		},
+		{
+			name:       "swarm service does not surface host namespace fields",
+			method:     "POST",
+			path:       "/v1.40/services/create",
+			body:       `{"TaskTemplate":{"ContainerSpec":{}}}`,
+			policy:     hostConfigPolicy{DenyPrivileged: true, DenyHostNamespaces: true},
+			shouldPass: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req, err := http.NewRequest(tt.method, tt.path, bytes.NewBufferString(tt.body))
+			if err != nil {
+				t.Fatalf("failed to create request: %v", err)
+			}
+			err = checkHostConfigRestrictions(tt.allowBindMounts, tt.policy, req)
+			if tt.shouldPass && err != nil {
+				t.Errorf("expected to pass, got error: %v", err)
+			}
+			if !tt.shouldPass && err == nil {
+				t.Errorf("expected to fail, but it passed")
+			}
+		})
+	}
+}
+
+func TestHostConfigPolicyIsZero(t *testing.T) {
+	if !(hostConfigPolicy{}).isZero() {
+		t.Error("zero policy should be isZero")
+	}
+	if (hostConfigPolicy{DenyPrivileged: true}).isZero() {
+		t.Error("policy with DenyPrivileged should not be isZero")
+	}
+	if (hostConfigPolicy{DenyCapAdd: true}).isZero() {
+		t.Error("policy with DenyCapAdd should not be isZero")
+	}
+	if (hostConfigPolicy{DenyHostNamespaces: true}).isZero() {
+		t.Error("policy with DenyHostNamespaces should not be isZero")
 	}
 }

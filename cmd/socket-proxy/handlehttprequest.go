@@ -30,9 +30,14 @@ func handleHTTPRequest(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// check bind mount restrictions
-	if err := checkBindMountRestrictions(allowList.AllowedBindMounts, r); err != nil {
-		communicateBlockedRequest(w, r, "bind mount restriction: "+err.Error(), http.StatusForbidden)
+	// check bind mount restrictions and host config security restrictions
+	policy := hostConfigPolicy{
+		DenyPrivileged:     allowList.DenyPrivileged,
+		DenyCapAdd:         allowList.DenyCapAdd,
+		DenyHostNamespaces: allowList.DenyHostNamespaces,
+	}
+	if err := checkHostConfigRestrictions(allowList.AllowedBindMounts, policy, r); err != nil {
+		communicateBlockedRequest(w, r, "host config restriction: "+err.Error(), http.StatusForbidden)
 		return
 	}
 

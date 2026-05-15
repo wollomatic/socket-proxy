@@ -24,7 +24,22 @@ import (
 	"github.com/wollomatic/socket-proxy/internal/docker/client"
 )
 
-const allowedDockerLabelPrefix = "socket-proxy.allow."
+const (
+	allowedDockerLabelPrefix = "socket-proxy.allow."
+	deniedDockerLabelPrefix  = "socket-proxy.deny."
+)
+
+// denyLabels carries deny-flag values parsed from container labels.
+type denyLabels struct {
+	Privileged     bool
+	CapAdd         bool
+	HostNamespaces bool
+}
+
+// any reports whether at least one deny flag is set.
+func (d denyLabels) any() bool {
+	return d.Privileged || d.CapAdd || d.HostNamespaces
+}
 
 const (
 	defaultAllowFrom                   = "127.0.0.1/32"         // allowed IPs to connect to the proxy
@@ -40,6 +55,9 @@ const (
 	defaultProxySocketEndpoint         = ""                     // empty string means no socket listener, but regular TCP listener
 	defaultProxySocketEndpointFileMode = uint(0o600)            // set the file mode of the unix socket endpoint
 	defaultAllowBindMountFrom          = ""                     // empty string means no bind mount restrictions
+	defaultDenyPrivileged              = false                  // if true, reject container creation with HostConfig.Privileged == true
+	defaultDenyCapAdd                  = false                  // if true, reject container creation that adds kernel capabilities
+	defaultDenyHostNamespaces          = false                  // if true, reject container creation that requests host namespaces
 	defaultProxyContainerName          = ""                     // socket-proxy Docker container name (empty string disables container labels for allowlists)
 )
 
@@ -67,9 +85,12 @@ type AllowListRegistry struct {
 }
 
 type AllowList struct {
-	ID                string                      // Container ID (empty for the default allowlist)
-	AllowedRequests   map[string][]*regexp.Regexp // map of request methods to request path regex patterns (no requests allowed if empty)
-	AllowedBindMounts []string                    // list of from portion of allowed bind mounts (all bind mounts allowed if empty)
+	ID                 string                      // Container ID (empty for the default allowlist)
+	AllowedRequests    map[string][]*regexp.Regexp // map of request methods to request path regex patterns (no requests allowed if empty)
+	AllowedBindMounts  []string                    // list of from portion of allowed bind mounts (all bind mounts allowed if empty)
+	DenyPrivileged     bool                        // reject container creation with HostConfig.Privileged == true
+	DenyCapAdd         bool                        // reject container creation with non-empty HostConfig.CapAdd
+	DenyHostNamespaces bool                        // reject container creation with host value for NetworkMode/PidMode/IpcMode/UTSMode/UsernsMode
 }
 
 // used for list of allowed requests
@@ -101,6 +122,9 @@ func InitConfig() (*Config, error) {
 		logLevel                                string
 		endpointFileMode                        uint
 		allowBindMountFromString                string
+		denyPrivileged                          bool
+		denyCapAdd                              bool
+		denyHostNamespaces                      bool
 		defaultAllowFromValue                   = defaultAllowFrom
 		defaultAllowHealthcheckValue            = defaultAllowHealthcheck
 		defaultLogJSONValue                     = defaultLogJSON
@@ -114,6 +138,9 @@ func InitConfig() (*Config, error) {
 		defaultProxySocketEndpointValue         = defaultProxySocketEndpoint
 		defaultProxySocketEndpointFileModeValue = defaultProxySocketEndpointFileMode
 		defaultAllowBindMountFromValue          = defaultAllowBindMountFrom
+		defaultDenyPrivilegedValue              = defaultDenyPrivileged
+		defaultDenyCapAddValue                  = defaultDenyCapAdd
+		defaultDenyHostNamespacesValue          = defaultDenyHostNamespaces
 		defaultProxyContainerNameValue          = defaultProxyContainerName
 	)
 
@@ -170,6 +197,21 @@ func InitConfig() (*Config, error) {
 	if val, ok := os.LookupEnv("SP_ALLOWBINDMOUNTFROM"); ok && val != "" {
 		defaultAllowBindMountFromValue = val
 	}
+	if val, ok := os.LookupEnv("SP_DENYPRIVILEGED"); ok {
+		if parsedVal, err := strconv.ParseBool(val); err == nil {
+			defaultDenyPrivilegedValue = parsedVal
+		}
+	}
+	if val, ok := os.LookupEnv("SP_DENYCAPADD"); ok {
+		if parsedVal, err := strconv.ParseBool(val); err == nil {
+			defaultDenyCapAddValue = parsedVal
+		}
+	}
+	if val, ok := os.LookupEnv("SP_DENYHOSTNAMESPACES"); ok {
+		if parsedVal, err := strconv.ParseBool(val); err == nil {
+			defaultDenyHostNamespacesValue = parsedVal
+		}
+	}
 	if val, ok := os.LookupEnv("SP_PROXYCONTAINERNAME"); ok && val != "" {
 		defaultProxyContainerNameValue = val
 	}
@@ -200,6 +242,9 @@ func InitConfig() (*Config, error) {
 	flag.StringVar(&cfg.ProxySocketEndpoint, "proxysocketendpoint", defaultProxySocketEndpointValue, "unix socket endpoint (if set, used instead of the TCP listener)")
 	flag.UintVar(&endpointFileMode, "proxysocketendpointfilemode", defaultProxySocketEndpointFileModeValue, "set the file mode of the unix socket endpoint")
 	flag.StringVar(&allowBindMountFromString, "allowbindmountfrom", defaultAllowBindMountFromValue, "allowed directories for bind mounts (comma-separated)")
+	flag.BoolVar(&denyPrivileged, "denyprivileged", defaultDenyPrivilegedValue, "reject container creation requests that set HostConfig.Privileged=true")
+	flag.BoolVar(&denyCapAdd, "denycapadd", defaultDenyCapAddValue, "reject container creation requests that add kernel capabilities (HostConfig.CapAdd)")
+	flag.BoolVar(&denyHostNamespaces, "denyhostnamespaces", defaultDenyHostNamespacesValue, "reject container creation requests that request host namespaces (NetworkMode/PidMode/IpcMode/UTSMode/UsernsMode=host)")
 	flag.StringVar(&cfg.ProxyContainerName, "proxycontainername", defaultProxyContainerNameValue, "socket-proxy Docker container name")
 	for i := range methodAllowLists {
 		flag.Var(&methodAllowLists[i].regexStrings, "allow"+methodAllowLists[i].method, "regex for "+methodAllowLists[i].method+" requests (not set means method is not allowed)")
@@ -220,6 +265,11 @@ func InitConfig() (*Config, error) {
 		}
 		cfg.AllowLists.Default.AllowedBindMounts = allowedBindMounts
 	}
+
+	// apply host config security deny flags to the default allowlist
+	cfg.AllowLists.Default.DenyPrivileged = denyPrivileged
+	cfg.AllowLists.Default.DenyCapAdd = denyCapAdd
+	cfg.AllowLists.Default.DenyHostNamespaces = denyHostNamespaces
 
 	// check listenIP and proxyPort
 	if proxyPort < 1 || proxyPort > 65535 {
@@ -416,19 +466,22 @@ func (allowLists *AllowListRegistry) initByIP(ctx context.Context, dockerClient 
 	allowLists.byIP = make(map[string]AllowList)
 
 	for _, cntr := range containers {
-		allowedRequests, allowedBindMounts, err := extractLabelData(cntr)
+		allowedRequests, allowedBindMounts, deny, err := extractLabelData(cntr)
 		if err != nil {
 			allowLists.byIP = nil
 			return err
 		}
 
-		if len(allowedRequests) > 0 || len(allowedBindMounts) > 0 {
+		if len(allowedRequests) > 0 || len(allowedBindMounts) > 0 || deny.any() {
 			for networkID, cntrNetwork := range cntr.NetworkSettings.Networks {
 				if slices.Contains(allowLists.networks, networkID) {
 					allowList := AllowList{
-						ID:                cntr.ID,
-						AllowedRequests:   allowedRequests,
-						AllowedBindMounts: allowedBindMounts,
+						ID:                 cntr.ID,
+						AllowedRequests:    allowedRequests,
+						AllowedBindMounts:  allowedBindMounts,
+						DenyPrivileged:     deny.Privileged,
+						DenyCapAdd:         deny.CapAdd,
+						DenyHostNamespaces: deny.HostNamespaces,
 					}
 
 					if len(cntrNetwork.IPAddress) > 0 {
@@ -488,17 +541,20 @@ func (allowLists *AllowListRegistry) add(
 	}
 	cntr := containers[0]
 
-	allowedRequests, allowedBindMounts, err := extractLabelData(cntr)
+	allowedRequests, allowedBindMounts, deny, err := extractLabelData(cntr)
 	if err != nil {
 		return nil, err
 	}
 
 	var ips []string
-	if len(allowedRequests) > 0 || len(allowedBindMounts) > 0 {
+	if len(allowedRequests) > 0 || len(allowedBindMounts) > 0 || deny.any() {
 		allowList := AllowList{
-			ID:                cntr.ID,
-			AllowedRequests:   allowedRequests,
-			AllowedBindMounts: allowedBindMounts,
+			ID:                 cntr.ID,
+			AllowedRequests:    allowedRequests,
+			AllowedBindMounts:  allowedBindMounts,
+			DenyPrivileged:     deny.Privileged,
+			DenyCapAdd:         deny.CapAdd,
+			DenyHostNamespaces: deny.HostNamespaces,
 		}
 
 		allowLists.mutex.Lock()
@@ -684,27 +740,45 @@ func getSocketProxyContainerSummary(socketPath, proxyContainerName string) (cont
 }
 
 // extract Docker container allowlist label data from the container summary
-func extractLabelData(cntr container.Summary) (map[string][]*regexp.Regexp, []string, error) {
+func extractLabelData(cntr container.Summary) (map[string][]*regexp.Regexp, []string, denyLabels, error) {
 	allowedRequests := make(map[string][]*regexp.Regexp)
 	var allowedBindMounts []string
+	var deny denyLabels
 	for labelName, labelValue := range cntr.Labels {
-		if strings.HasPrefix(labelName, allowedDockerLabelPrefix) && labelValue != "" {
+		if labelValue == "" {
+			continue
+		}
+		if strings.HasPrefix(labelName, allowedDockerLabelPrefix) {
 			allowSpec := strings.ToUpper(strings.TrimPrefix(labelName, allowedDockerLabelPrefix))
 			method, _, _ := strings.Cut(allowSpec, ".")
 			if slices.Contains(supportedHTTPMethods, method) {
 				r, err := compileRegexp(labelValue, method, "docker container label")
 				if err != nil {
-					return nil, nil, err
+					return nil, nil, denyLabels{}, err
 				}
 				allowedRequests[method] = append(allowedRequests[method], r)
 			} else if allowSpec == "BINDMOUNTFROM" {
 				var err error
 				allowedBindMounts, err = parseAllowedBindMounts(labelValue)
 				if err != nil {
-					return nil, nil, err
+					return nil, nil, denyLabels{}, err
 				}
+			}
+		} else if strings.HasPrefix(labelName, deniedDockerLabelPrefix) {
+			denySpec := strings.ToLower(strings.TrimPrefix(labelName, deniedDockerLabelPrefix))
+			parsedVal, err := strconv.ParseBool(labelValue)
+			if err != nil {
+				return nil, nil, denyLabels{}, fmt.Errorf("invalid boolean value %q for label %s", labelValue, labelName)
+			}
+			switch denySpec {
+			case "privileged":
+				deny.Privileged = parsedVal
+			case "capadd":
+				deny.CapAdd = parsedVal
+			case "hostnamespaces":
+				deny.HostNamespaces = parsedVal
 			}
 		}
 	}
-	return allowedRequests, allowedBindMounts, nil
+	return allowedRequests, allowedBindMounts, deny, nil
 }

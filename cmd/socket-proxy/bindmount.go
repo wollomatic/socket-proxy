@@ -52,8 +52,15 @@ type (
 	}
 	// containerHostConfig is the subset of github.com/docker/docker/api/types/container.HostConfig.
 	containerHostConfig struct {
-		Binds  []string     // List of volume bindings for this container.
-		Mounts []mountMount `json:",omitempty"` // Mounts specs used by the container.
+		Binds       []string     // List of volume bindings for this container.
+		Mounts      []mountMount `json:",omitempty"` // Mounts specs used by the container.
+		Privileged  bool         `json:",omitempty"` // Is the container in privileged mode.
+		CapAdd      []string     `json:",omitempty"` // List of kernel capabilities to add to the container.
+		NetworkMode string       `json:",omitempty"` // Network namespace ("host" gives host networking).
+		PidMode     string       `json:",omitempty"` // PID namespace ("host" gives host PID).
+		IpcMode     string       `json:",omitempty"` // IPC namespace ("host" gives host IPC).
+		UTSMode     string       `json:",omitempty"` // UTS namespace ("host" gives host UTS).
+		UsernsMode  string       `json:",omitempty"` // User namespace mode ("host" disables user namespace remapping).
 	}
 	// swarmServiceSpec is the subset of github.com/docker/docker/api/types/swarm.ServiceSpec.
 	swarmServiceSpec struct {
@@ -78,10 +85,25 @@ type (
 	}
 )
 
-// checkBindMountRestrictions checks if bind mounts in the request are allowed.
-func checkBindMountRestrictions(allowedBindMounts []string, r *http.Request) error {
-	// Only check if bind mount restrictions are configured
-	if len(allowedBindMounts) == 0 {
+// hostConfigPolicy defines optional host config security restrictions applied
+// alongside bind mount source allowlisting. The zero value means no extra
+// restrictions are enforced beyond bind mount validation.
+type hostConfigPolicy struct {
+	DenyPrivileged     bool // reject HostConfig.Privileged == true
+	DenyCapAdd         bool // reject non-empty HostConfig.CapAdd
+	DenyHostNamespaces bool // reject host value for NetworkMode/PidMode/IpcMode/UTSMode/UsernsMode
+}
+
+// isZero reports whether the policy enforces no restrictions.
+func (p hostConfigPolicy) isZero() bool {
+	return !p.DenyPrivileged && !p.DenyCapAdd && !p.DenyHostNamespaces
+}
+
+// checkHostConfigRestrictions checks bind mount sources and host config
+// security restrictions for relevant container/service API requests.
+func checkHostConfigRestrictions(allowedBindMounts []string, policy hostConfigPolicy, r *http.Request) error {
+	// Only check if restrictions are configured
+	if len(allowedBindMounts) == 0 && policy.isZero() {
 		return nil
 	}
 
@@ -89,28 +111,28 @@ func checkBindMountRestrictions(allowedBindMounts []string, r *http.Request) err
 		return nil
 	}
 
-	// Check different API endpoints that can use bind mounts
+	// Check different API endpoints that can use bind mounts or set host config
 	pathParts := strings.Split(r.URL.Path, "/")
 	switch {
 	case len(pathParts) >= 4 && pathParts[2] == "containers" && pathParts[3] == "create":
 		// Container creation: /vX.xx/containers/create
-		return checkContainer(allowedBindMounts, r)
+		return checkContainer(allowedBindMounts, policy, r)
 	case len(pathParts) >= 5 && pathParts[2] == "containers" && pathParts[4] == "update":
 		// Container update: /vX.xx/containers/{id}/update
-		return checkContainer(allowedBindMounts, r)
+		return checkContainer(allowedBindMounts, policy, r)
 	case len(pathParts) >= 4 && pathParts[2] == "services" && pathParts[3] == "create":
 		// Service creation: /vX.xx/services/create
-		return checkService(allowedBindMounts, r)
+		return checkService(allowedBindMounts, policy, r)
 	case len(pathParts) >= 5 && pathParts[2] == "services" && pathParts[4] == "update":
 		// Service update: /vX.xx/services/{id}/update
-		return checkService(allowedBindMounts, r)
+		return checkService(allowedBindMounts, policy, r)
 	default:
 		return nil
 	}
 }
 
-// checkContainer checks bind mounts in container creation requests.
-func checkContainer(allowedBindMounts []string, r *http.Request) error {
+// checkContainer checks bind mounts and host config in container creation/update requests.
+func checkContainer(allowedBindMounts []string, policy hostConfigPolicy, r *http.Request) error {
 	body, err := readAndRestoreBody(r)
 	if err != nil {
 		return err
@@ -122,11 +144,13 @@ func checkContainer(allowedBindMounts []string, r *http.Request) error {
 		return nil // Don't block if we can't parse.
 	}
 
-	return checkHostConfigBindMounts(allowedBindMounts, req.HostConfig)
+	return checkHostConfig(allowedBindMounts, policy, req.HostConfig)
 }
 
-// checkService checks bind mounts in service creation requests.
-func checkService(allowedBindMounts []string, r *http.Request) error {
+// checkService checks bind mounts and host config in service creation/update requests.
+// Swarm services only allow specifying Mounts (not Binds) and do not expose the
+// host-namespace/privileged fields, so only the Mounts list is forwarded for validation.
+func checkService(allowedBindMounts []string, policy hostConfigPolicy, r *http.Request) error {
 	body, err := readAndRestoreBody(r)
 	if err != nil {
 		return err
@@ -141,20 +165,38 @@ func checkService(allowedBindMounts []string, r *http.Request) error {
 	if req.TaskTemplate.ContainerSpec == nil {
 		return nil // No container spec, nothing to check.
 	}
-	return checkHostConfigBindMounts(
+	return checkHostConfig(
 		allowedBindMounts,
+		policy,
 		&containerHostConfig{
 			Mounts: req.TaskTemplate.ContainerSpec.Mounts,
 		},
 	)
 }
 
-// checkHostConfigBindMounts checks bind mounts in HostConfig.
-func checkHostConfigBindMounts(allowedBindMounts []string, hostConfig *containerHostConfig) error {
+// checkHostConfig validates bind mount sources and host config security restrictions.
+func checkHostConfig(allowedBindMounts []string, policy hostConfigPolicy, hostConfig *containerHostConfig) error {
 	if hostConfig == nil {
 		return nil // No HostConfig, nothing to check
 	}
 
+	if len(allowedBindMounts) > 0 {
+		if err := checkHostConfigBindMounts(allowedBindMounts, hostConfig); err != nil {
+			return err
+		}
+	}
+
+	if !policy.isZero() {
+		if err := checkHostConfigSecurity(policy, hostConfig); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+// checkHostConfigBindMounts checks bind mounts in HostConfig.
+func checkHostConfigBindMounts(allowedBindMounts []string, hostConfig *containerHostConfig) error {
 	// Check legacy Binds field
 	for _, bind := range hostConfig.Binds {
 		if err := validateBindMount(allowedBindMounts, bind); err != nil {
@@ -172,6 +214,41 @@ func checkHostConfigBindMounts(allowedBindMounts []string, hostConfig *container
 	}
 
 	return nil
+}
+
+// checkHostConfigSecurity rejects host config fields that punch through container isolation.
+// Each check is gated by its corresponding policy flag; with the zero policy this function is a no-op.
+func checkHostConfigSecurity(policy hostConfigPolicy, hostConfig *containerHostConfig) error {
+	if policy.DenyPrivileged && hostConfig.Privileged {
+		return fmt.Errorf("privileged containers not allowed")
+	}
+	if policy.DenyCapAdd && len(hostConfig.CapAdd) > 0 {
+		return fmt.Errorf("adding kernel capabilities not allowed: %v", hostConfig.CapAdd)
+	}
+	if policy.DenyHostNamespaces {
+		if mode := hostConfig.NetworkMode; isHostNamespace(mode) {
+			return fmt.Errorf("host network mode not allowed: %s", mode)
+		}
+		if mode := hostConfig.PidMode; isHostNamespace(mode) {
+			return fmt.Errorf("host PID namespace not allowed: %s", mode)
+		}
+		if mode := hostConfig.IpcMode; isHostNamespace(mode) {
+			return fmt.Errorf("host IPC namespace not allowed: %s", mode)
+		}
+		if mode := hostConfig.UTSMode; isHostNamespace(mode) {
+			return fmt.Errorf("host UTS namespace not allowed: %s", mode)
+		}
+		if mode := hostConfig.UsernsMode; isHostNamespace(mode) {
+			return fmt.Errorf("host user namespace mode not allowed: %s", mode)
+		}
+	}
+	return nil
+}
+
+// isHostNamespace reports whether a HostConfig namespace mode string requests the host namespace.
+// Docker accepts both the bare "host" value and prefixed forms like "host:..." for some modes.
+func isHostNamespace(mode string) bool {
+	return mode == "host" || strings.HasPrefix(mode, "host:")
 }
 
 // validateBindMount validates a bind mount string in the format "source:target:options".

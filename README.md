@@ -123,13 +123,37 @@ Bind mount restrictions are applied to relevant Docker API endpoints and work wi
 
 **Note**: This feature only restricts bind mounts. Other mount types (volumes, tmpfs, etc.) are not affected by this restriction.
 
+#### Restricting dangerous host config fields
+
+In addition to bind mount source allowlisting, socket-proxy can reject container creation requests that set `HostConfig` fields that break out of container isolation. Each check is opt-in via its own flag and defaults to off, so existing deployments are unaffected on upgrade.
+
+| Flag | Env variable | Rejects when |
+| --- | --- | --- |
+| `-denyprivileged` | `SP_DENYPRIVILEGED` | `HostConfig.Privileged == true` |
+| `-denycapadd` | `SP_DENYCAPADD` | `HostConfig.CapAdd` is non-empty (any added kernel capability) |
+| `-denyhostnamespaces` | `SP_DENYHOSTNAMESPACES` | `HostConfig.NetworkMode` / `PidMode` / `IpcMode` / `UTSMode` / `UsernsMode` equals `host` (or a `host:*` form for modes that accept it) |
+
+These checks apply to `POST /containers/create` and `POST /containers/{id}/update`. Swarm services do not surface these `HostConfig` fields in their API, so these flags have no effect there; only the bind mount filter applies to service create/update.
+
+Example combining bind mount restrictions and host config deny flags:
+
+```text
+socket-proxy \
+    -allowbindmountfrom=/srv/projects \
+    -denyprivileged \
+    -denycapadd \
+    -denyhostnamespaces \
+    -allowGET='/v[0-9.]+/(_ping|version|containers/.*|images/.*)' \
+    -allowPOST='/v[0-9.]+/(containers/create|containers/.*/(start|stop|restart|kill))'
+```
+
 #### Setting up per-container allowlists
 
 Allowlists for both requests and bind mount restrictions can be specified for particular containers. To do this:
 
 1. Set `-proxycontainername` or the environment variable `SP_PROXYCONTAINERNAME` to the name of the socket proxy container.
 2. Make sure that each container that will use the socket proxy is in a Docker network that the socket proxy container is also in.
-3. Use the same regex syntax for request allowlists and for bind mount restrictions that were discussed earlier, but for labels on each container that will use the socket proxy. Each label name will have the prefix of `socket-proxy.allow.`, with `socket-proxy.allow.bindmountfrom` for bind mount restrictions. For example:
+3. Use the same regex syntax for request allowlists and for bind mount restrictions that were discussed earlier, but for labels on each container that will use the socket proxy. Each label name will have the prefix of `socket-proxy.allow.`, with `socket-proxy.allow.bindmountfrom` for bind mount restrictions. Host config deny flags use the `socket-proxy.deny.` prefix and take a boolean string (`true`, `1`, `false`, `0`). For example:
 
 ```yaml
 services:
@@ -142,6 +166,9 @@ services:
       - 'socket-proxy.allow.get=.*' # allow all GET requests to socket-proxy
       - 'socket-proxy.allow.head=/version' # HEAD `/version` requests to socket-proxy
       - 'socket-proxy.allow.head.1=/exec' # another HEAD `exec` requests to socket-proxy
+      - 'socket-proxy.deny.privileged=true' # reject container creation with HostConfig.Privileged=true
+      - 'socket-proxy.deny.capadd=true' # reject container creation that adds kernel capabilities
+      - 'socket-proxy.deny.hostnamespaces=true' # reject host NetworkMode/PidMode/IpcMode/UTSMode/UsernsMode
 ```
 
 When this is used, it is not necessary to specify the container in `-allowfrom` as the presence of the allowlist labels will grant corresponding access.
@@ -249,6 +276,9 @@ socket-proxy can be configured via command-line parameters or via environment va
 | `-proxysocketendpoint`         | `SP_PROXYSOCKETENDPOINT`         | (not set)              | Proxy to the given unix socket instead of a TCP port                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
 | `-proxysocketendpointfilemode` | `SP_PROXYSOCKETENDPOINTFILEMODE` | `0600`                 | Explicitly set the file mode for the filtered unix socket endpoint (only useful with `-proxysocketendpoint`)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
 | `-proxycontainername`          | `SP_PROXYCONTAINERNAME`          | (not set)              | Provides the name of the socket proxy container to enable per-container allowlists specified by Docker container labels (not available with `-proxysocketendpoint`)                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| `-denyprivileged`              | `SP_DENYPRIVILEGED`              | (not set/false)        | If set, reject container creation/update requests that set `HostConfig.Privileged=true`. Defaults to off.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| `-denycapadd`                  | `SP_DENYCAPADD`                  | (not set/false)        | If set, reject container creation/update requests that add kernel capabilities via `HostConfig.CapAdd`. Defaults to off.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| `-denyhostnamespaces`          | `SP_DENYHOSTNAMESPACES`          | (not set/false)        | If set, reject container creation/update requests that request host namespaces via `HostConfig.NetworkMode` / `PidMode` / `IpcMode` / `UTSMode` / `UsernsMode` equal to `host`. Defaults to off.                                                                                                                                                                                                                                                                                                                                                                                                                                  |
 
 ### Changelog
 
