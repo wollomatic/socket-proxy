@@ -1,7 +1,7 @@
 # socket-proxy
 
 ## Latest image
-- `wollomatic/socket-proxy:1.12.0` / `ghcr.io/wollomatic/socket-proxy:1.12.0`
+- `wollomatic/socket-proxy:1.12.2` / `ghcr.io/wollomatic/socket-proxy:1.12.2`
 - `wollomatic/socket-proxy:1` / `ghcr.io/wollomatic/socket-proxy:1`
 
 > [!IMPORTANT]
@@ -25,9 +25,6 @@ The allowlist is configured for each HTTP method separately using the Go regexp 
 
 The source code is available on [GitHub: wollomatic/socket-proxy](https://github.com/wollomatic/socket-proxy)
 
-> [!NOTE]
-> Starting with version 1.6.0, the socket-proxy container image is also available on GHCR.  
-
 ## Getting Started
 
 Some examples can be found in the [wiki](https://github.com/wollomatic/socket-proxy/wiki) and in the `examples` directory of the repo.
@@ -48,6 +45,15 @@ There may be an additional docker image with the `testing`-tag. This image is on
 
 Every socket-proxy release image is signed with Cosign. The public key is available on [GitHub: wollomatic/socket-proxy/main/cosign.pub](https://raw.githubusercontent.com/wollomatic/socket-proxy/main/cosign.pub) and [https://wollomatic.de/socket-proxy/cosign.pub](https://wollomatic.de/socket-proxy/cosign.pub). For more information, please refer to the [Security Policy](https://github.com/wollomatic/socket-proxy/blob/main/SECURITY.md).
 As of version 1.6, all multi-arch images are signed.
+
+### Migrating from other Docker socket proxies
+
+> [!TIP]
+> If you are coming from `tecnativa/docker-socket-proxy` or `linuxserver/docker-socket-proxy`, configuring a regular expression allowlist may seem more complex at first.
+>
+> To simplify migration, you can use the [Socket Proxy Configuration Converter](https://socket-proxy-configurator.wollomatic.dev/). The tool runs entirely in your browser and converts existing `docker-socket-proxy` environment variable configurations into equivalent regular expression allowlists for `wollomatic/socket-proxy`.
+>
+> The converter is fully open source. Its source code is available at [wollomatic/socket-proxy-configurator](https://github.com/wollomatic/socket-proxy-configurator).
 
 ### Allowing access
 
