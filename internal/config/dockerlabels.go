@@ -91,7 +91,8 @@ func (cfg *Config) UpdateAllowLists() {
 				slog.Info("Docker event stream closed")
 				return
 			}
-			slog.Debug("received Docker container event", "action", event.Action, "id", event.Actor.ID[:12])
+			containerName := eventContainerName(event)
+			slog.Debug("received Docker container event", "action", event.Action, "container", containerName)
 			addedIPs, removedIPs, updateErr := cfg.AllowLists.updateFromEvent(ctx, dockerClient, event)
 			if updateErr != nil {
 				slog.Warn("failed to update allowlists from container event", "error", updateErr)
@@ -106,7 +107,7 @@ func (cfg *Config) UpdateAllowLists() {
 				}
 			}
 			for _, ip := range removedIPs {
-				slog.Info("removed allowlist for container", "id", event.Actor.ID[:12], "ip", ip)
+				slog.Info("removed allowlist for container", "container", containerName, "ip", ip)
 			}
 		case err := <-errChan:
 			if err != nil {
@@ -259,6 +260,7 @@ func (allowLists *AllowListRegistry) initByIP(ctx context.Context, dockerClient 
 				if slices.Contains(allowLists.networks, networkID) {
 					allowList := AllowList{
 						ID:                cntr.ID,
+						ContainerName:     containerName(cntr),
 						AllowedRequests:   allowedRequests,
 						AllowedBindMounts: allowedBindMounts,
 					}
@@ -320,7 +322,7 @@ func (allowLists *AllowListRegistry) add(
 		return nil, err
 	}
 	if len(containers) == 0 {
-		slog.Debug("container is not in a network with socket-proxy or may have stopped", "id", containerID[:12])
+		slog.Debug("container is not in a network with socket-proxy or may have stopped", "id", shortContainerID(containerID))
 		return nil, nil
 	}
 	cntr := containers[0]
@@ -334,6 +336,7 @@ func (allowLists *AllowListRegistry) add(
 	if len(allowedRequests) > 0 || len(allowedBindMounts) > 0 {
 		allowList := AllowList{
 			ID:                cntr.ID,
+			ContainerName:     containerName(cntr),
 			AllowedRequests:   allowedRequests,
 			AllowedBindMounts: allowedBindMounts,
 		}
@@ -377,6 +380,33 @@ func (allowLists *AllowListRegistry) remove(containerID string) []string {
 		}
 	}
 	return removedIPs
+}
+
+// containerName returns Docker's container name without its leading slash.
+// It falls back to the short container ID for unusual responses without a name.
+func containerName(cntr container.Summary) string {
+	for _, name := range cntr.Names {
+		if name = strings.TrimPrefix(name, "/"); name != "" {
+			return name
+		}
+	}
+	return shortContainerID(cntr.ID)
+}
+
+// eventContainerName returns the name Docker includes with container events.
+// It falls back to the short container ID when the event has no name.
+func eventContainerName(event events.Message) string {
+	if name := event.Actor.Attributes["name"]; name != "" {
+		return name
+	}
+	return shortContainerID(event.Actor.ID)
+}
+
+func shortContainerID(id string) string {
+	if len(id) > 12 {
+		return id[:12]
+	}
+	return id
 }
 
 // return list of docker networks that the socket proxy container is in

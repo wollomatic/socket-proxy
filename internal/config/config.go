@@ -52,6 +52,7 @@ type Config struct {
 
 type AllowList struct {
 	ID                string                      // Container ID (empty for the default allowlist)
+	ContainerName     string                      // Container name (empty for the default allowlist)
 	AllowedRequests   map[string][]*regexp.Regexp // map of request methods to request path regex patterns (no requests allowed if empty)
 	AllowedBindMounts []string                    // list of from portion of allowed bind mounts (all bind mounts allowed if empty)
 }
@@ -291,7 +292,7 @@ func (allowList AllowList) Print(ip string, logJSON bool) {
 		} else {
 			for method, regex := range allowList.AllowedRequests {
 				slog.Info("configured request allowlist",
-					"id", allowList.ID[:12],
+					"container", allowList.ContainerName,
 					"ip", ip,
 					"method", method,
 					"regex", regex,
@@ -304,7 +305,7 @@ func (allowList AllowList) Print(ip string, logJSON bool) {
 		if ip == "" {
 			fmt.Printf("Default request allowlist:\n   %-8s %s\n", "Method", "Regex")
 		} else {
-			fmt.Printf("Request allowlist for %s (%s):\n   %-8s %s\n", allowList.ID[:12], ip, "Method", "Regex")
+			fmt.Printf("Request allowlist for %s (%s):\n   %-8s %s\n", allowList.ContainerName, ip, "Method", "Regex")
 		}
 		for method, regex := range allowList.AllowedRequests {
 			fmt.Printf("   %-8s %s\n", method, regex)
@@ -319,7 +320,7 @@ func (allowList AllowList) Print(ip string, logJSON bool) {
 		} else {
 			slog.Info("Docker bind mount restrictions enabled",
 				"allowbindmountfrom", allowList.AllowedBindMounts,
-				"id", allowList.ID[:12],
+				"container", allowList.ContainerName,
 				"ip", ip,
 			)
 		}
@@ -328,7 +329,7 @@ func (allowList AllowList) Print(ip string, logJSON bool) {
 		if ip == "" {
 			slog.Debug("no default Docker bind mount restrictions")
 		} else {
-			slog.Debug("no Docker bind mount restrictions", "id", allowList.ID[:12], "ip", ip)
+			slog.Debug("no Docker bind mount restrictions", "container", allowList.ContainerName, "ip", ip)
 		}
 	}
 }
