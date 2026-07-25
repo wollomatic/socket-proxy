@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/wollomatic/socket-proxy/internal/docker/api/types/container"
+	"github.com/wollomatic/socket-proxy/internal/docker/api/types/events"
 	"github.com/wollomatic/socket-proxy/internal/docker/api/types/network"
 )
 
@@ -166,6 +167,106 @@ func TestRefreshAllowLists(t *testing.T) {
 	}
 	if !matchAny(allowList.AllowedRequests[http.MethodGet], "/version") {
 		t.Fatal("refreshed allowlist does not contain the container label")
+	}
+}
+
+func TestRefreshDoesNotOverwriteNewerEventUpdate(t *testing.T) {
+	socketPath := filepath.Join(t.TempDir(), "docker.sock")
+	listener, err := net.Listen("unix", socketPath)
+	if err != nil {
+		t.Fatalf("listen on Docker test socket: %v", err)
+	}
+	t.Cleanup(func() { _ = listener.Close() })
+
+	requestStarted := make(chan struct{})
+	releaseRequest := make(chan struct{})
+	var (
+		containerListRequests atomic.Int32
+		startOnce             sync.Once
+		releaseOnce           sync.Once
+	)
+	release := func() {
+		releaseOnce.Do(func() { close(releaseRequest) })
+	}
+	t.Cleanup(release)
+
+	go func() {
+		_ = http.Serve(listener, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			switch r.URL.Path {
+			case "/_ping":
+				w.Header().Set("Api-Version", "1.51")
+			case "/v1.51/containers/json":
+				if containerListRequests.Add(1) != 1 {
+					if err := json.NewEncoder(w).Encode([]container.Summary{}); err != nil {
+						t.Errorf("encode container list: %v", err)
+					}
+					return
+				}
+				startOnce.Do(func() { close(requestStarted) })
+				<-releaseRequest
+				if err := json.NewEncoder(w).Encode([]container.Summary{{
+					ID: "stopped-container-id",
+					Labels: map[string]string{
+						"socket-proxy.allow.get": "/version",
+					},
+					NetworkSettings: &container.NetworkSettingsSummary{Networks: map[string]*network.EndpointSettings{
+						"proxy-network": {IPAddress: "172.20.0.2"},
+					}},
+				}}); err != nil {
+					t.Errorf("encode container list: %v", err)
+				}
+			default:
+				http.NotFound(w, r)
+			}
+		}))
+	}()
+
+	cfg := Config{
+		SocketPath: socketPath,
+		AllowLists: &AllowListRegistry{
+			networks: []string{"proxy-network"},
+			byIP: map[string]AllowList{
+				"172.20.0.2": {ID: "stopped-container-id"},
+			},
+		},
+	}
+	refreshResult := make(chan error, 1)
+	go func() {
+		_, refreshErr := cfg.RefreshAllowLists(context.Background())
+		refreshResult <- refreshErr
+	}()
+
+	select {
+	case <-requestStarted:
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for Docker refresh to start")
+	}
+
+	_, removedIPs, err := cfg.AllowLists.updateFromEvent(context.Background(), nil, events.Message{
+		Action: events.ActionDie,
+		Actor:  events.Actor{ID: "stopped-container-id"},
+	})
+	if err != nil {
+		t.Fatalf("updateFromEvent() error = %v", err)
+	}
+	if !reflect.DeepEqual(removedIPs, []string{"172.20.0.2"}) {
+		t.Fatalf("removed IPs = %v, want [172.20.0.2]", removedIPs)
+	}
+
+	release()
+	select {
+	case err := <-refreshResult:
+		if err != nil {
+			t.Fatalf("RefreshAllowLists() error = %v", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for Docker refresh retry")
+	}
+	if got := containerListRequests.Load(); got != 2 {
+		t.Fatalf("Docker container list requests = %d, want 2", got)
+	}
+	if _, found := cfg.AllowLists.FindByIP("172.20.0.2"); found {
+		t.Fatal("refresh restored the allowlist removed by a newer event")
 	}
 }
 

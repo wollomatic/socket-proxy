@@ -38,7 +38,8 @@ type allowListsRefresh struct {
 }
 
 type AllowListRegistry struct {
-	mutex    sync.RWMutex         // mutex to control read/write of byIP
+	mutex    sync.RWMutex         // mutex to control read/write of byIP and revision
+	revision uint64               // generation used to detect updates during Docker snapshots
 	networks []string             // names of networks in which socket proxy access is allowed for non-default allowlists
 	Default  AllowList            // default allowlist
 	byIP     map[string]AllowList // map container IP address to allowlist for that container
@@ -222,12 +223,25 @@ func (allowLists *AllowListRegistry) initByIP(ctx context.Context, dockerClient 
 	for _, network := range allowLists.networks {
 		filter.Add("network", network)
 	}
-	containers, err := dockerClient.ContainerList(ctx, container.ListOptions{Filters: filter})
-	if err != nil {
-		return err
-	}
 
-	allowLists.mutex.Lock()
+	var containers []container.Summary
+	for {
+		allowLists.mutex.RLock()
+		snapshotRevision := allowLists.revision
+		allowLists.mutex.RUnlock()
+
+		var err error
+		containers, err = dockerClient.ContainerList(ctx, container.ListOptions{Filters: filter})
+		if err != nil {
+			return err
+		}
+
+		allowLists.mutex.Lock()
+		if allowLists.revision == snapshotRevision {
+			break
+		}
+		allowLists.mutex.Unlock()
+	}
 	defer allowLists.mutex.Unlock()
 
 	allowLists.byIP = make(map[string]AllowList)
@@ -236,6 +250,7 @@ func (allowLists *AllowListRegistry) initByIP(ctx context.Context, dockerClient 
 		allowedRequests, allowedBindMounts, err := extractLabelData(cntr)
 		if err != nil {
 			allowLists.byIP = nil
+			allowLists.revision++
 			return err
 		}
 
@@ -259,6 +274,7 @@ func (allowLists *AllowListRegistry) initByIP(ctx context.Context, dockerClient 
 		}
 	}
 
+	allowLists.revision++
 	return nil
 }
 
@@ -266,6 +282,10 @@ func (allowLists *AllowListRegistry) initByIP(ctx context.Context, dockerClient 
 func (allowLists *AllowListRegistry) updateFromEvent(
 	ctx context.Context, dockerClient *client.Client, event events.Message,
 ) ([]string, []string, error) {
+	allowLists.mutex.Lock()
+	allowLists.revision++
+	allowLists.mutex.Unlock()
+
 	containerID := event.Actor.ID
 	var (
 		addedIPs   []string
@@ -320,6 +340,10 @@ func (allowLists *AllowListRegistry) add(
 
 		allowLists.mutex.Lock()
 		defer allowLists.mutex.Unlock()
+
+		if allowLists.byIP == nil {
+			allowLists.byIP = make(map[string]AllowList)
+		}
 
 		for networkID, cntrNetwork := range cntr.NetworkSettings.Networks {
 			if slices.Contains(allowLists.networks, networkID) {
