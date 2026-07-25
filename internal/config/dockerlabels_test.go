@@ -453,7 +453,13 @@ func TestRefreshCoalescing(t *testing.T) {
 		requestStarted        = make(chan struct{})
 		releaseRequest        = make(chan struct{})
 		startOnce             sync.Once
+		releaseOnce           sync.Once
 	)
+	release := func() {
+		releaseOnce.Do(func() { close(releaseRequest) })
+	}
+	t.Cleanup(release)
+
 	go func() {
 		_ = http.Serve(listener, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			switch r.URL.Path {
@@ -500,7 +506,7 @@ func TestRefreshCoalescing(t *testing.T) {
 			results <- refreshErr
 		}()
 	}
-	close(releaseRequest)
+	release()
 
 	if err := <-firstResult; err == nil {
 		t.Fatal("first RefreshAllowLists() unexpectedly succeeded")
