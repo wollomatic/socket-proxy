@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/wollomatic/socket-proxy/internal/docker/api/types/container"
+	"github.com/wollomatic/socket-proxy/internal/docker/api/types/events"
 )
 
 func resetFlagsForTest(t *testing.T, args []string) func() {
@@ -126,6 +127,65 @@ func regexMapsEqual(a, b map[string][]*regexp.Regexp) bool {
 		}
 	}
 	return true
+}
+
+func TestContainerName(t *testing.T) {
+	tests := []struct {
+		name string
+		cntr container.Summary
+		want string
+	}{
+		{
+			name: "uses the first Docker container name",
+			cntr: container.Summary{ID: "0123456789abcdef", Names: []string{"/traefik", "/ignored"}},
+			want: "traefik",
+		},
+		{
+			name: "falls back to the short ID when Docker provides no name",
+			cntr: container.Summary{ID: "0123456789abcdef"},
+			want: "0123456789ab",
+		},
+		{
+			name: "does not panic for a short fallback ID",
+			cntr: container.Summary{ID: "short"},
+			want: "short",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := containerName(tt.cntr); got != tt.want {
+				t.Errorf("containerName() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestEventContainerName(t *testing.T) {
+	tests := []struct {
+		name  string
+		event events.Message
+		want  string
+	}{
+		{
+			name:  "uses the container name from event attributes",
+			event: events.Message{Actor: events.Actor{ID: "0123456789abcdef", Attributes: map[string]string{"name": "traefik"}}},
+			want:  "traefik",
+		},
+		{
+			name:  "falls back to the short ID when the event has no name",
+			event: events.Message{Actor: events.Actor{ID: "0123456789abcdef"}},
+			want:  "0123456789ab",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := eventContainerName(tt.event); got != tt.want {
+				t.Errorf("eventContainerName() = %q, want %q", got, tt.want)
+			}
+		})
+	}
 }
 
 func TestInitConfig_AllowMethodFlagOverridesEnv(t *testing.T) {

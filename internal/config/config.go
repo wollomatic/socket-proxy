@@ -68,6 +68,7 @@ type AllowListRegistry struct {
 
 type AllowList struct {
 	ID                string                      // Container ID (empty for the default allowlist)
+	ContainerName     string                      // Container name (empty for the default allowlist)
 	AllowedRequests   map[string][]*regexp.Regexp // map of request methods to request path regex patterns (no requests allowed if empty)
 	AllowedBindMounts []string                    // list of from portion of allowed bind mounts (all bind mounts allowed if empty)
 }
@@ -341,7 +342,8 @@ func (cfg *Config) UpdateAllowLists() {
 				slog.Info("Docker event stream closed")
 				return
 			}
-			slog.Debug("received Docker container event", "action", event.Action, "id", event.Actor.ID[:12])
+			containerName := eventContainerName(event)
+			slog.Debug("received Docker container event", "action", event.Action, "container", containerName)
 			addedIPs, removedIPs, updateErr := cfg.AllowLists.updateFromEvent(ctx, dockerClient, event)
 			if updateErr != nil {
 				slog.Warn("failed to update allowlists from container event", "error", updateErr)
@@ -356,7 +358,7 @@ func (cfg *Config) UpdateAllowLists() {
 				}
 			}
 			for _, ip := range removedIPs {
-				slog.Info("removed allowlist for container", "id", event.Actor.ID[:12], "ip", ip)
+				slog.Info("removed allowlist for container", "container", containerName, "ip", ip)
 			}
 		case err := <-errChan:
 			if err != nil {
@@ -427,6 +429,7 @@ func (allowLists *AllowListRegistry) initByIP(ctx context.Context, dockerClient 
 				if slices.Contains(allowLists.networks, networkID) {
 					allowList := AllowList{
 						ID:                cntr.ID,
+						ContainerName:     containerName(cntr),
 						AllowedRequests:   allowedRequests,
 						AllowedBindMounts: allowedBindMounts,
 					}
@@ -483,7 +486,7 @@ func (allowLists *AllowListRegistry) add(
 		return nil, err
 	}
 	if len(containers) == 0 {
-		slog.Debug("container is not in a network with socket-proxy or may have stopped", "id", containerID[:12])
+		slog.Debug("container is not in a network with socket-proxy or may have stopped", "id", shortContainerID(containerID))
 		return nil, nil
 	}
 	cntr := containers[0]
@@ -497,6 +500,7 @@ func (allowLists *AllowListRegistry) add(
 	if len(allowedRequests) > 0 || len(allowedBindMounts) > 0 {
 		allowList := AllowList{
 			ID:                cntr.ID,
+			ContainerName:     containerName(cntr),
 			AllowedRequests:   allowedRequests,
 			AllowedBindMounts: allowedBindMounts,
 		}
@@ -550,7 +554,7 @@ func (allowList AllowList) Print(ip string, logJSON bool) {
 		} else {
 			for method, regex := range allowList.AllowedRequests {
 				slog.Info("configured request allowlist",
-					"id", allowList.ID[:12],
+					"container", allowList.ContainerName,
 					"ip", ip,
 					"method", method,
 					"regex", regex,
@@ -563,7 +567,7 @@ func (allowList AllowList) Print(ip string, logJSON bool) {
 		if ip == "" {
 			fmt.Printf("Default request allowlist:\n   %-8s %s\n", "Method", "Regex")
 		} else {
-			fmt.Printf("Request allowlist for %s (%s):\n   %-8s %s\n", allowList.ID[:12], ip, "Method", "Regex")
+			fmt.Printf("Request allowlist for %s (%s):\n   %-8s %s\n", allowList.ContainerName, ip, "Method", "Regex")
 		}
 		for method, regex := range allowList.AllowedRequests {
 			fmt.Printf("   %-8s %s\n", method, regex)
@@ -578,7 +582,7 @@ func (allowList AllowList) Print(ip string, logJSON bool) {
 		} else {
 			slog.Info("Docker bind mount restrictions enabled",
 				"allowbindmountfrom", allowList.AllowedBindMounts,
-				"id", allowList.ID[:12],
+				"container", allowList.ContainerName,
 				"ip", ip,
 			)
 		}
@@ -587,9 +591,36 @@ func (allowList AllowList) Print(ip string, logJSON bool) {
 		if ip == "" {
 			slog.Debug("no default Docker bind mount restrictions")
 		} else {
-			slog.Debug("no Docker bind mount restrictions", "id", allowList.ID[:12], "ip", ip)
+			slog.Debug("no Docker bind mount restrictions", "container", allowList.ContainerName, "ip", ip)
 		}
 	}
+}
+
+// containerName returns Docker's container name without its leading slash.
+// It falls back to the short container ID for unusual responses without a name.
+func containerName(cntr container.Summary) string {
+	for _, name := range cntr.Names {
+		if name = strings.TrimPrefix(name, "/"); name != "" {
+			return name
+		}
+	}
+	return shortContainerID(cntr.ID)
+}
+
+// eventContainerName returns the name Docker includes with container events.
+// It falls back to the short container ID when the event has no name.
+func eventContainerName(event events.Message) string {
+	if name := event.Actor.Attributes["name"]; name != "" {
+		return name
+	}
+	return shortContainerID(event.Actor.ID)
+}
+
+func shortContainerID(id string) string {
+	if len(id) > 12 {
+		return id[:12]
+	}
+	return id
 }
 
 // compile allowed requests regex pattern
