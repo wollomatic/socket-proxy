@@ -229,9 +229,67 @@ func TestRefreshAllowLists(t *testing.T) {
 	}
 }
 
+func TestRefreshAllowListsErrorPreservesRegistry(t *testing.T) {
+	socketPath := filepath.Join(t.TempDir(), "docker.sock")
+	listener, err := (&net.ListenConfig{}).Listen(context.Background(), "unix", socketPath)
+	if err != nil {
+		t.Fatalf("listen on Docker test socket: %v", err)
+	}
+	t.Cleanup(func() { _ = listener.Close() })
+
+	go func() {
+		_ = http.Serve(listener, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			switch r.URL.Path {
+			case "/_ping":
+				w.Header().Set("Api-Version", "1.51")
+			case "/v1.51/containers/json":
+				if err := json.NewEncoder(w).Encode([]container.Summary{{
+					ID: "container-id",
+					Labels: map[string]string{
+						"socket-proxy.allow.get": "invalid[regex",
+					},
+					NetworkSettings: &container.NetworkSettingsSummary{Networks: map[string]*network.EndpointSettings{
+						"proxy-network": {IPAddress: "172.20.0.3"},
+					}},
+				}}); err != nil {
+					t.Errorf("encode container list: %v", err)
+				}
+			default:
+				http.NotFound(w, r)
+			}
+		}))
+	}()
+
+	const initialRevision = 7
+	cfg := Config{
+		SocketPath: socketPath,
+		AllowLists: &AllowListRegistry{
+			revision: initialRevision,
+			networks: []string{"proxy-network"},
+			byIP: map[string]AllowList{
+				"172.20.0.2": {ID: "existing-container-id"},
+			},
+		},
+	}
+	if _, err := cfg.RefreshAllowLists(context.Background()); err == nil {
+		t.Fatal("RefreshAllowLists() unexpectedly succeeded")
+	}
+
+	allowList, found := cfg.AllowLists.FindByIP("172.20.0.2")
+	if !found || allowList.ID != "existing-container-id" {
+		t.Fatal("RefreshAllowLists() modified the existing allowlist after an error")
+	}
+	cfg.AllowLists.mutex.RLock()
+	revision := cfg.AllowLists.revision
+	cfg.AllowLists.mutex.RUnlock()
+	if revision != initialRevision {
+		t.Fatalf("revision = %d, want %d", revision, initialRevision)
+	}
+}
+
 func TestRefreshDoesNotOverwriteNewerEventUpdate(t *testing.T) {
 	socketPath := filepath.Join(t.TempDir(), "docker.sock")
-	listener, err := net.Listen("unix", socketPath)
+	listener, err := (&net.ListenConfig{}).Listen(context.Background(), "unix", socketPath)
 	if err != nil {
 		t.Fatalf("listen on Docker test socket: %v", err)
 	}
@@ -329,9 +387,62 @@ func TestRefreshDoesNotOverwriteNewerEventUpdate(t *testing.T) {
 	}
 }
 
+func TestRefreshRevisionRetriesRespectTimeout(t *testing.T) {
+	socketPath := filepath.Join(t.TempDir(), "docker.sock")
+	listener, err := (&net.ListenConfig{}).Listen(context.Background(), "unix", socketPath)
+	if err != nil {
+		t.Fatalf("listen on Docker test socket: %v", err)
+	}
+	t.Cleanup(func() { _ = listener.Close() })
+
+	const refreshTimeout = 50 * time.Millisecond
+	var containerListRequests atomic.Int32
+	cfg := Config{
+		SocketPath: socketPath,
+		AllowLists: &AllowListRegistry{
+			byIP: map[string]AllowList{
+				"172.20.0.2": {ID: "existing-container-id"},
+			},
+		},
+		allowListsRefresh: allowListsRefreshState{
+			timeout: refreshTimeout,
+		},
+	}
+
+	go func() {
+		_ = http.Serve(listener, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			switch r.URL.Path {
+			case "/_ping":
+				w.Header().Set("Api-Version", "1.51")
+			case "/v1.51/containers/json":
+				containerListRequests.Add(1)
+				cfg.AllowLists.mutex.Lock()
+				cfg.AllowLists.revision++
+				cfg.AllowLists.mutex.Unlock()
+				if err := json.NewEncoder(w).Encode([]container.Summary{}); err != nil {
+					t.Errorf("encode container list: %v", err)
+				}
+			default:
+				http.NotFound(w, r)
+			}
+		}))
+	}()
+
+	if _, err := cfg.RefreshAllowLists(context.Background()); !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("RefreshAllowLists() error = %v, want context.DeadlineExceeded", err)
+	}
+	maxRequests := int32(refreshTimeout/allowListsRefreshRetryBackoff) + 1
+	if got := containerListRequests.Load(); got > maxRequests {
+		t.Fatalf("Docker container list requests = %d, want at most %d", got, maxRequests)
+	}
+	if _, found := cfg.AllowLists.FindByIP("172.20.0.2"); !found {
+		t.Fatal("timed-out refresh replaced the existing allowlist")
+	}
+}
+
 func TestRefreshCoalescing(t *testing.T) {
 	socketPath := filepath.Join(t.TempDir(), "docker.sock")
-	listener, err := net.Listen("unix", socketPath)
+	listener, err := (&net.ListenConfig{}).Listen(context.Background(), "unix", socketPath)
 	if err != nil {
 		t.Fatalf("listen on Docker test socket: %v", err)
 	}
@@ -413,7 +524,7 @@ func TestRefreshCoalescing(t *testing.T) {
 
 func TestRefreshTimeoutClearsInFlightRefresh(t *testing.T) {
 	socketPath := filepath.Join(t.TempDir(), "docker.sock")
-	listener, err := net.Listen("unix", socketPath)
+	listener, err := (&net.ListenConfig{}).Listen(context.Background(), "unix", socketPath)
 	if err != nil {
 		t.Fatalf("listen on Docker test socket: %v", err)
 	}

@@ -19,6 +19,7 @@ import (
 const (
 	allowedDockerLabelPrefix        = "socket-proxy.allow."
 	allowListsRefreshCooldown       = time.Second
+	allowListsRefreshRetryBackoff   = 10 * time.Millisecond
 	defaultAllowListsRefreshTimeout = 10 * time.Second
 )
 
@@ -225,39 +226,53 @@ func (allowLists *AllowListRegistry) initByIP(ctx context.Context, dockerClient 
 		filter.Add("network", network)
 	}
 
-	var containers []container.Summary
 	for {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+
 		allowLists.mutex.RLock()
 		snapshotRevision := allowLists.revision
 		allowLists.mutex.RUnlock()
 
-		var err error
-		containers, err = dockerClient.ContainerList(ctx, container.ListOptions{Filters: filter})
+		containers, err := dockerClient.ContainerList(ctx, container.ListOptions{Filters: filter})
+		if err != nil {
+			return err
+		}
+
+		byIP, err := buildByIP(containers, allowLists.networks)
 		if err != nil {
 			return err
 		}
 
 		allowLists.mutex.Lock()
 		if allowLists.revision == snapshotRevision {
-			break
+			allowLists.byIP = byIP
+			allowLists.revision++
+			allowLists.mutex.Unlock()
+			return nil
 		}
 		allowLists.mutex.Unlock()
+
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(allowListsRefreshRetryBackoff):
+		}
 	}
-	defer allowLists.mutex.Unlock()
+}
 
-	allowLists.byIP = make(map[string]AllowList)
-
+func buildByIP(containers []container.Summary, networks []string) (map[string]AllowList, error) {
+	byIP := make(map[string]AllowList)
 	for _, cntr := range containers {
 		allowedRequests, allowedBindMounts, err := extractLabelData(cntr)
 		if err != nil {
-			allowLists.byIP = nil
-			allowLists.revision++
-			return err
+			return nil, err
 		}
 
 		if len(allowedRequests) > 0 || len(allowedBindMounts) > 0 {
 			for networkID, cntrNetwork := range cntr.NetworkSettings.Networks {
-				if slices.Contains(allowLists.networks, networkID) {
+				if slices.Contains(networks, networkID) {
 					allowList := AllowList{
 						ID:                cntr.ID,
 						ContainerName:     containerName(cntr),
@@ -266,18 +281,17 @@ func (allowLists *AllowListRegistry) initByIP(ctx context.Context, dockerClient 
 					}
 
 					if len(cntrNetwork.IPAddress) > 0 {
-						allowLists.byIP[cntrNetwork.IPAddress] = allowList
+						byIP[cntrNetwork.IPAddress] = allowList
 					}
 					if len(cntrNetwork.GlobalIPv6Address) > 0 {
-						allowLists.byIP[cntrNetwork.GlobalIPv6Address] = allowList
+						byIP[cntrNetwork.GlobalIPv6Address] = allowList
 					}
 				}
 			}
 		}
 	}
 
-	allowLists.revision++
-	return nil
+	return byIP, nil
 }
 
 // update the allowlist registry based on the Docker event
