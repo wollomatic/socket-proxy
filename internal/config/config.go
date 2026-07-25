@@ -44,6 +44,7 @@ const (
 )
 
 type Config struct {
+	allowListsRefreshMutex      sync.Mutex // serialises synchronous allowlist refreshes triggered by requests
 	AllowLists                  *AllowListRegistry
 	AllowFrom                   []string
 	AllowHealthcheck            bool
@@ -365,6 +366,29 @@ func (cfg *Config) UpdateAllowLists() {
 			}
 		}
 	}
+}
+
+// RefreshAllowLists updates the per-container allowlists from Docker. It is
+// used when a request arrives before its corresponding Docker start event has
+// been processed.
+func (cfg *Config) RefreshAllowLists(ctx context.Context) error {
+	cfg.allowListsRefreshMutex.Lock()
+	defer cfg.allowListsRefreshMutex.Unlock()
+
+	dockerClient, err := client.NewClientWithOpts(
+		client.WithHost("unix://"+cfg.SocketPath),
+		client.WithAPIVersionNegotiation(),
+	)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		if closeErr := dockerClient.Close(); closeErr != nil {
+			slog.Error("failed to close Docker client", "error", closeErr)
+		}
+	}()
+
+	return cfg.AllowLists.initByIP(ctx, dockerClient)
 }
 
 // PrintNetworks prints the allowed networks

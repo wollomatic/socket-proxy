@@ -1,9 +1,14 @@
 package config
 
 import (
+	"context"
+	"encoding/json"
 	"flag"
 	"math"
+	"net"
+	"net/http"
 	"os"
+	"path/filepath"
 	"reflect"
 	"regexp"
 	"sort"
@@ -11,6 +16,7 @@ import (
 	"testing"
 
 	"github.com/wollomatic/socket-proxy/internal/docker/api/types/container"
+	"github.com/wollomatic/socket-proxy/internal/docker/api/types/network"
 )
 
 func resetFlagsForTest(t *testing.T, args []string) func() {
@@ -174,4 +180,63 @@ func TestInitConfig_WatchdogIntervalTooLarge(t *testing.T) {
 	if err == nil {
 		t.Fatal("InitConfig() unexpectedly succeeded")
 	}
+}
+
+func TestRefreshAllowLists(t *testing.T) {
+	socketPath := filepath.Join(t.TempDir(), "docker.sock")
+	listener, err := net.Listen("unix", socketPath)
+	if err != nil {
+		t.Fatalf("listen on Docker test socket: %v", err)
+	}
+	t.Cleanup(func() { _ = listener.Close() })
+
+	go func() {
+		_ = http.Serve(listener, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			switch r.URL.Path {
+			case "/_ping":
+				w.Header().Set("Api-Version", "1.51")
+			case "/v1.51/containers/json":
+				if err := json.NewEncoder(w).Encode([]container.Summary{{
+					ID: "container-id",
+					Labels: map[string]string{
+						"socket-proxy.allow.get": "/version",
+					},
+					NetworkSettings: &container.NetworkSettingsSummary{Networks: map[string]*network.EndpointSettings{
+						"proxy-network": {IPAddress: "172.20.0.2"},
+					}},
+				}}); err != nil {
+					t.Errorf("encode container list: %v", err)
+				}
+			default:
+				http.NotFound(w, r)
+			}
+		}))
+	}()
+
+	cfg := Config{
+		SocketPath: socketPath,
+		AllowLists: &AllowListRegistry{
+			networks: []string{"proxy-network"},
+		},
+	}
+	if err := cfg.RefreshAllowLists(context.Background()); err != nil {
+		t.Fatalf("RefreshAllowLists() error = %v", err)
+	}
+
+	allowList, found := cfg.AllowLists.FindByIP("172.20.0.2")
+	if !found {
+		t.Fatal("allowlist was not added for container IP")
+	}
+	if !matchAny(allowList.AllowedRequests[http.MethodGet], "/version") {
+		t.Fatal("refreshed allowlist does not contain the container label")
+	}
+}
+
+func matchAny(regexes []*regexp.Regexp, value string) bool {
+	for _, regex := range regexes {
+		if regex.MatchString(value) {
+			return true
+		}
+	}
+	return false
 }

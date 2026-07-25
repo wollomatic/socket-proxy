@@ -74,6 +74,16 @@ func determineAllowList(r *http.Request) (config.AllowList, bool) {
 			slog.Warn("cannot get valid IP address for client allowlist check", "reason", err, "method", r.Method, "URL", r.URL, "client", r.RemoteAddr) // #nosec G706 - structured logging (slog) safely encodes values
 		}
 		if !allowedIP {
+			// A container can send its first request before Docker's start event has
+			// updated the per-container allowlist. Refresh it once before denying
+			// the request, while still failing closed if Docker cannot be queried.
+			if cfg.ProxyContainerName != "" {
+				if err := cfg.RefreshAllowLists(r.Context()); err != nil {
+					slog.Warn("failed to refresh per-container allowlists", "error", err)
+				} else if allowList, found := cfg.AllowLists.FindByIP(clientIPStr); found {
+					return allowList, true
+				}
+			}
 			return config.AllowList{}, false
 		}
 	}
