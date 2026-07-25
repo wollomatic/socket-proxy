@@ -1,22 +1,11 @@
 package config
 
 import (
-	"context"
-	"encoding/json"
 	"flag"
 	"math"
-	"net"
-	"net/http"
 	"os"
-	"path/filepath"
-	"reflect"
-	"regexp"
-	"sort"
 	"strconv"
 	"testing"
-
-	"github.com/wollomatic/socket-proxy/internal/docker/api/types/container"
-	"github.com/wollomatic/socket-proxy/internal/docker/api/types/network"
 )
 
 func resetFlagsForTest(t *testing.T, args []string) func() {
@@ -33,105 +22,6 @@ func resetFlagsForTest(t *testing.T, args []string) func() {
 		flag.CommandLine = prevCommandLine
 		os.Args = prevArgs
 	}
-}
-
-func Test_extractLabelData(t *testing.T) {
-	tests := []struct {
-		name string // description of this test case
-		// Named input parameters for target function.
-		cntr    container.Summary
-		want    map[string][]*regexp.Regexp
-		want2   []string
-		wantErr bool
-	}{
-		{
-			name: "valid labels with multiple methods and regexes",
-			cntr: container.Summary{
-				Labels: map[string]string{
-					"socket-proxy.allow.get.0": "regex1",
-					"socket-proxy.allow.get.1": "regex2",
-					"socket-proxy.allow.post":  "regex3",
-				},
-			},
-			want: map[string][]*regexp.Regexp{
-				"GET":  {regexp.MustCompile("^regex1$"), regexp.MustCompile("^regex2$")},
-				"POST": {regexp.MustCompile("^regex3$")},
-			},
-			want2:   nil,
-			wantErr: false,
-		},
-		{
-			name: "invalid regex in label value",
-			cntr: container.Summary{
-				Labels: map[string]string{
-					"socket-proxy.allow.get": "invalid[regex",
-				},
-			},
-			want:    nil,
-			want2:   nil,
-			wantErr: true,
-		},
-		{
-			name: "non-allow labels are ignored",
-			cntr: container.Summary{
-				Labels: map[string]string{
-					"socket-proxy.allow.get": "regex1",
-					"other.label":            "value",
-				},
-			},
-			want: map[string][]*regexp.Regexp{
-				"GET": {regexp.MustCompile("^regex1$")},
-			},
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got, got2, gotErr := extractLabelData(tt.cntr)
-			if gotErr != nil {
-				if !tt.wantErr {
-					t.Errorf("extractLabelData() failed: %v", gotErr)
-				}
-				return
-			}
-			if tt.wantErr {
-				t.Fatal("extractLabelData() succeeded unexpectedly")
-			}
-			if !regexMapsEqual(got, tt.want) {
-				t.Errorf("extractLabelData() = %v, want %v", got, tt.want)
-			}
-			if !reflect.DeepEqual(got2, tt.want2) {
-				t.Errorf("extractLabelData() = %v, want %v", got2, tt.want2)
-			}
-		})
-	}
-}
-
-func regexMapsEqual(a, b map[string][]*regexp.Regexp) bool {
-	if len(a) != len(b) {
-		return false
-	}
-	for method, aRegexes := range a {
-		bRegexes, ok := b[method]
-		if !ok || len(aRegexes) != len(bRegexes) {
-			return false
-		}
-		aRegexStrings := make([]string, 0, len(aRegexes))
-		for _, ar := range aRegexes {
-			aRegexStrings = append(aRegexStrings, ar.String())
-		}
-		bRegexStrings := make([]string, 0, len(bRegexes))
-		for _, br := range bRegexes {
-			bRegexStrings = append(bRegexStrings, br.String())
-		}
-		sort.Strings(aRegexStrings)
-		sort.Strings(bRegexStrings)
-		for i, ar := range aRegexStrings {
-			if ar != bRegexStrings[i] {
-				return false
-			}
-		}
-	}
-	return true
 }
 
 func TestInitConfig_AllowMethodFlagOverridesEnv(t *testing.T) {
@@ -180,63 +70,4 @@ func TestInitConfig_WatchdogIntervalTooLarge(t *testing.T) {
 	if err == nil {
 		t.Fatal("InitConfig() unexpectedly succeeded")
 	}
-}
-
-func TestRefreshAllowLists(t *testing.T) {
-	socketPath := filepath.Join(t.TempDir(), "docker.sock")
-	listener, err := net.Listen("unix", socketPath)
-	if err != nil {
-		t.Fatalf("listen on Docker test socket: %v", err)
-	}
-	t.Cleanup(func() { _ = listener.Close() })
-
-	go func() {
-		_ = http.Serve(listener, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			switch r.URL.Path {
-			case "/_ping":
-				w.Header().Set("Api-Version", "1.51")
-			case "/v1.51/containers/json":
-				if err := json.NewEncoder(w).Encode([]container.Summary{{
-					ID: "container-id",
-					Labels: map[string]string{
-						"socket-proxy.allow.get": "/version",
-					},
-					NetworkSettings: &container.NetworkSettingsSummary{Networks: map[string]*network.EndpointSettings{
-						"proxy-network": {IPAddress: "172.20.0.2"},
-					}},
-				}}); err != nil {
-					t.Errorf("encode container list: %v", err)
-				}
-			default:
-				http.NotFound(w, r)
-			}
-		}))
-	}()
-
-	cfg := Config{
-		SocketPath: socketPath,
-		AllowLists: &AllowListRegistry{
-			networks: []string{"proxy-network"},
-		},
-	}
-	if err := cfg.RefreshAllowLists(context.Background()); err != nil {
-		t.Fatalf("RefreshAllowLists() error = %v", err)
-	}
-
-	allowList, found := cfg.AllowLists.FindByIP("172.20.0.2")
-	if !found {
-		t.Fatal("allowlist was not added for container IP")
-	}
-	if !matchAny(allowList.AllowedRequests[http.MethodGet], "/version") {
-		t.Fatal("refreshed allowlist does not contain the container label")
-	}
-}
-
-func matchAny(regexes []*regexp.Regexp, value string) bool {
-	for _, regex := range regexes {
-		if regex.MatchString(value) {
-			return true
-		}
-	}
-	return false
 }

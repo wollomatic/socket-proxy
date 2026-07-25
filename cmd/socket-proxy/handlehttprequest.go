@@ -78,9 +78,10 @@ func determineAllowList(r *http.Request) (config.AllowList, bool) {
 			// updated the per-container allowlist. Refresh it once before denying
 			// the request, while still failing closed if Docker cannot be queried.
 			if cfg.ProxyContainerName != "" {
-				if err := cfg.RefreshAllowLists(r.Context()); err != nil {
+				refreshedAllowLists, err := cfg.RefreshAllowLists(r.Context())
+				if err != nil {
 					slog.Warn("failed to refresh per-container allowlists", "error", err)
-				} else if allowList, found := cfg.AllowLists.FindByIP(clientIPStr); found {
+				} else if allowList, found := refreshedAllowLists.FindByIP(clientIPStr); found {
 					return allowList, true
 				}
 			}
