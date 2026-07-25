@@ -28,7 +28,7 @@ const allowedDockerLabelPrefix = "socket-proxy.allow."
 
 const (
 	defaultAllowFrom                   = "127.0.0.1/32"         // allowed IPs to connect to the proxy
-	defaultAllowHealthcheck            = false                  // allow health check requests (HEAD http://localhost:55555/health)
+	defaultAllowHealthcheck            = false                  // allow health check requests (HEAD http://127.0.0.1:55555/health)
 	defaultLogJSON                     = false                  // if true, log in JSON format
 	defaultLogLevel                    = "INFO"                 // log level as string
 	defaultListenIP                    = "127.0.0.1"            // ip address to bind the server to
@@ -189,7 +189,7 @@ func InitConfig() (*Config, error) {
 	}
 
 	flag.StringVar(&allowFromString, "allowfrom", defaultAllowFromValue, "allowed IPs or hostname to connect to the proxy")
-	flag.BoolVar(&cfg.AllowHealthcheck, "allowhealthcheck", defaultAllowHealthcheckValue, "allow health check requests (HEAD http://localhost:55555/health)")
+	flag.BoolVar(&cfg.AllowHealthcheck, "allowhealthcheck", defaultAllowHealthcheckValue, "allow health check requests (HEAD http://127.0.0.1:55555/health)")
 	flag.BoolVar(&cfg.LogJSON, "logjson", defaultLogJSONValue, "log in JSON format (otherwise log in plain text")
 	flag.StringVar(&listenIP, "listenip", defaultListenIPValue, "ip address to listen on")
 	flag.StringVar(&logLevel, "loglevel", defaultLogLevelValue, "set log level: DEBUG, INFO, WARN, ERROR")

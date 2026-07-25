@@ -10,10 +10,11 @@ import (
 // if the health check succeeds, the program exits with a zero exit code
 // socket-proxy must be started with the -allowhealthcheck flag
 func main() {
-	resp, err := http.Head("http://localhost:55555/health")
+	resp, err := http.Head("http://127.0.0.1:55555/health")
 	if err != nil {
 		log.Fatal("error doing health check: ", err)
 	}
+	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
 		log.Fatal("health check failed, got status: ", resp.StatusCode)
 	}
