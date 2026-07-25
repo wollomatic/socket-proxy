@@ -40,7 +40,7 @@ func startSocketWatchdog(socketPath string, interval int64, stopOnWatchdog bool,
 	}
 }
 
-// healthCheckServer starts a http server that listens on localhost:55555/health
+// healthCheckServer starts a http server that listens on 127.0.0.1:55555/health
 // and returns 200 if the socket is available, 503 otherwise.
 func healthCheckServer(socketPath string) {
 	hcMux := http.NewServeMux()
