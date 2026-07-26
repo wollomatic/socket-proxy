@@ -25,6 +25,7 @@ func Test_extractLabelData(t *testing.T) {
 		name string // description of this test case
 		// Named input parameters for target function.
 		cntr    container.Summary
+		prefix  string
 		want    map[string][]*regexp.Regexp
 		want2   []string
 		wantErr bool
@@ -57,6 +58,19 @@ func Test_extractLabelData(t *testing.T) {
 			wantErr: true,
 		},
 		{
+			name: "custom label prefix ignores the default prefix",
+			cntr: container.Summary{
+				Labels: map[string]string{
+					"socket-proxy.allow.get":            "default",
+					"gameserver-socket-proxy.allow.get": "custom",
+				},
+			},
+			prefix: "gameserver-socket-proxy",
+			want: map[string][]*regexp.Regexp{
+				"GET": {regexp.MustCompile("^custom$")},
+			},
+		},
+		{
 			name: "non-allow labels are ignored",
 			cntr: container.Summary{
 				Labels: map[string]string{
@@ -71,6 +85,12 @@ func Test_extractLabelData(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			previousPrefix := allowedDockerLabelPrefix
+			defer func() { allowedDockerLabelPrefix = previousPrefix }()
+			allowedDockerLabelPrefix = defaultDockerLabelPrefix + ".allow."
+			if tt.prefix != "" {
+				allowedDockerLabelPrefix = tt.prefix + ".allow."
+			}
 			got, got2, gotErr := extractLabelData(tt.cntr)
 			if gotErr != nil {
 				if !tt.wantErr {

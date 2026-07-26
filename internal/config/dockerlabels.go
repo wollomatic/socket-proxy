@@ -17,11 +17,12 @@ import (
 )
 
 const (
-	allowedDockerLabelPrefix        = "socket-proxy.allow."
 	allowListsRefreshCooldown       = 50 * time.Millisecond
 	allowListsRefreshRetryBackoff   = 10 * time.Millisecond
 	defaultAllowListsRefreshTimeout = 10 * time.Second
 )
+
+var allowedDockerLabelPrefix = defaultDockerLabelPrefix + ".allow."
 
 type allowListsRefreshState struct {
 	mutex      sync.Mutex

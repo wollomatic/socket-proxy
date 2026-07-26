@@ -30,6 +30,7 @@ const (
 	defaultProxySocketEndpoint         = ""                     // empty string means no socket listener, but regular TCP listener
 	defaultProxySocketEndpointFileMode = uint(0o600)            // set the file mode of the unix socket endpoint
 	defaultAllowBindMountFrom          = ""                     // empty string means no bind mount restrictions
+	defaultDockerLabelPrefix           = "socket-proxy"         // prefix before .allow. in per-container allowlist labels
 	defaultProxyContainerName          = ""                     // socket-proxy Docker container name (empty string disables container labels for allowlists)
 )
 
@@ -75,6 +76,8 @@ var supportedHTTPMethods = []string{
 	http.MethodOptions,
 }
 
+var dockerLabelPrefixRegexp = regexp.MustCompile(`^[a-z0-9]+(?:[.-][a-z0-9]+)*$`)
+
 // InitConfig reads configuration from environment variables and command-line
 // flags, validates the resulting values, and returns the initialized Config.
 func InitConfig() (*Config, error) {
@@ -86,6 +89,7 @@ func InitConfig() (*Config, error) {
 		logLevel                                string
 		endpointFileMode                        uint
 		allowBindMountFromString                string
+		dockerLabelPrefix                       string
 		defaultAllowFromValue                   = defaultAllowFrom
 		defaultAllowHealthcheckValue            = defaultAllowHealthcheck
 		defaultLogJSONValue                     = defaultLogJSON
@@ -99,6 +103,7 @@ func InitConfig() (*Config, error) {
 		defaultProxySocketEndpointValue         = defaultProxySocketEndpoint
 		defaultProxySocketEndpointFileModeValue = defaultProxySocketEndpointFileMode
 		defaultAllowBindMountFromValue          = defaultAllowBindMountFrom
+		defaultDockerLabelPrefixValue           = defaultDockerLabelPrefix
 		defaultProxyContainerNameValue          = defaultProxyContainerName
 	)
 
@@ -155,6 +160,9 @@ func InitConfig() (*Config, error) {
 	if val, ok := os.LookupEnv("SP_ALLOWBINDMOUNTFROM"); ok && val != "" {
 		defaultAllowBindMountFromValue = val
 	}
+	if val, ok := os.LookupEnv("SP_DOCKERLABELPREFIX"); ok && val != "" {
+		defaultDockerLabelPrefixValue = val
+	}
 	if val, ok := os.LookupEnv("SP_PROXYCONTAINERNAME"); ok && val != "" {
 		defaultProxyContainerNameValue = val
 	}
@@ -185,11 +193,16 @@ func InitConfig() (*Config, error) {
 	flag.StringVar(&cfg.ProxySocketEndpoint, "proxysocketendpoint", defaultProxySocketEndpointValue, "unix socket endpoint (if set, used instead of the TCP listener)")
 	flag.UintVar(&endpointFileMode, "proxysocketendpointfilemode", defaultProxySocketEndpointFileModeValue, "set the file mode of the unix socket endpoint")
 	flag.StringVar(&allowBindMountFromString, "allowbindmountfrom", defaultAllowBindMountFromValue, "allowed directories for bind mounts (comma-separated)")
+	flag.StringVar(&dockerLabelPrefix, "dockerlabelprefix", defaultDockerLabelPrefixValue, "prefix before .allow. in Docker container allowlist labels")
 	flag.StringVar(&cfg.ProxyContainerName, "proxycontainername", defaultProxyContainerNameValue, "socket-proxy Docker container name")
 	for i := range methodAllowLists {
 		flag.Var(&methodAllowLists[i].regexStrings, "allow"+methodAllowLists[i].method, "regex for "+methodAllowLists[i].method+" requests (not set means method is not allowed)")
 	}
 	flag.Parse()
+
+	if !dockerLabelPrefixRegexp.MatchString(dockerLabelPrefix) {
+		return nil, fmt.Errorf("invalid dockerlabelprefix %q: use lowercase letters, digits, dots, and hyphens only; dots and hyphens must separate alphanumeric parts", dockerLabelPrefix)
+	}
 
 	// init allowlist registry to configure default allowlist
 	cfg.AllowLists = &AllowListRegistry{}
@@ -276,6 +289,7 @@ func InitConfig() (*Config, error) {
 			return nil, err
 		}
 	}
+	allowedDockerLabelPrefix = dockerLabelPrefix + ".allow."
 
 	return &cfg, nil
 }

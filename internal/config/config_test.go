@@ -13,6 +13,7 @@ func resetFlagsForTest(t *testing.T, args []string) func() {
 
 	prevCommandLine := flag.CommandLine
 	prevArgs := os.Args
+	prevDockerLabelPrefix := allowedDockerLabelPrefix
 
 	flag.CommandLine = flag.NewFlagSet(args[0], flag.ContinueOnError)
 	flag.CommandLine.SetOutput(os.Stderr)
@@ -21,6 +22,7 @@ func resetFlagsForTest(t *testing.T, args []string) func() {
 	return func() {
 		flag.CommandLine = prevCommandLine
 		os.Args = prevArgs
+		allowedDockerLabelPrefix = prevDockerLabelPrefix
 	}
 }
 
@@ -43,6 +45,38 @@ func TestInitConfig_AllowMethodFlagOverridesEnv(t *testing.T) {
 	}
 	if regexes[0].MatchString("/from-env") {
 		t.Fatalf("expected env GET regex to be ignored when flag is present, got %q", regexes[0].String())
+	}
+}
+
+func TestInitConfig_DockerLabelPrefixFlagOverridesEnv(t *testing.T) {
+	t.Setenv("SP_DOCKERLABELPREFIX", "from-env")
+	restore := resetFlagsForTest(t, []string{"socket-proxy", "-dockerlabelprefix=gameserver-socket-proxy"})
+	defer restore()
+
+	_, err := InitConfig()
+	if err != nil {
+		t.Fatalf("InitConfig() error = %v", err)
+	}
+
+	if got, want := allowedDockerLabelPrefix, "gameserver-socket-proxy.allow."; got != want {
+		t.Errorf("allowedDockerLabelPrefix = %q, want %q", got, want)
+	}
+}
+
+func TestInitConfig_InvalidDockerLabelPrefix(t *testing.T) {
+	for _, prefix := range []string{
+		"Traefik",
+		"traefik..proxy",
+		"traefik-",
+	} {
+		t.Run(prefix, func(t *testing.T) {
+			restore := resetFlagsForTest(t, []string{"socket-proxy", "-dockerlabelprefix=" + prefix})
+			defer restore()
+
+			if _, err := InitConfig(); err == nil {
+				t.Fatalf("InitConfig() with dockerlabelprefix %q unexpectedly succeeded", prefix)
+			}
+		})
 	}
 }
 
