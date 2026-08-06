@@ -1,7 +1,6 @@
 package config
 
 import (
-	"context"
 	"errors"
 	"flag"
 	"fmt"
@@ -15,20 +14,11 @@ import (
 	"slices"
 	"strconv"
 	"strings"
-	"sync"
-	"time"
-
-	"github.com/wollomatic/socket-proxy/internal/docker/api/types/container"
-	"github.com/wollomatic/socket-proxy/internal/docker/api/types/events"
-	"github.com/wollomatic/socket-proxy/internal/docker/api/types/filters"
-	"github.com/wollomatic/socket-proxy/internal/docker/client"
 )
-
-const allowedDockerLabelPrefix = "socket-proxy.allow."
 
 const (
 	defaultAllowFrom                   = "127.0.0.1/32"         // allowed IPs to connect to the proxy
-	defaultAllowHealthcheck            = false                  // allow health check requests (HEAD http://127.0.0.1:55555/health)
+	defaultAllowHealthcheck            = false                  // allow health check requests (HEAD http://localhost:55555/health)
 	defaultLogJSON                     = false                  // if true, log in JSON format
 	defaultLogLevel                    = "INFO"                 // log level as string
 	defaultListenIP                    = "127.0.0.1"            // ip address to bind the server to
@@ -40,10 +30,12 @@ const (
 	defaultProxySocketEndpoint         = ""                     // empty string means no socket listener, but regular TCP listener
 	defaultProxySocketEndpointFileMode = uint(0o600)            // set the file mode of the unix socket endpoint
 	defaultAllowBindMountFrom          = ""                     // empty string means no bind mount restrictions
+	defaultDockerLabelPrefix           = "socket-proxy"         // prefix before .allow. in per-container allowlist labels
 	defaultProxyContainerName          = ""                     // socket-proxy Docker container name (empty string disables container labels for allowlists)
 )
 
 type Config struct {
+	allowListsRefresh           allowListsRefreshState
 	AllowLists                  *AllowListRegistry
 	AllowFrom                   []string
 	AllowHealthcheck            bool
@@ -57,13 +49,6 @@ type Config struct {
 	ProxySocketEndpoint         string
 	ProxySocketEndpointFileMode os.FileMode
 	ProxyContainerName          string
-}
-
-type AllowListRegistry struct {
-	mutex    sync.RWMutex         // mutex to control read/write of byIP
-	networks []string             // names of networks in which socket proxy access is allowed for non-default allowlists
-	Default  AllowList            // default allowlist
-	byIP     map[string]AllowList // map container IP address to allowlist for that container
 }
 
 type AllowList struct {
@@ -91,6 +76,8 @@ var supportedHTTPMethods = []string{
 	http.MethodOptions,
 }
 
+var dockerLabelPrefixRegexp = regexp.MustCompile(`^[a-z0-9]+(?:[.-][a-z0-9]+)*$`)
+
 // InitConfig reads configuration from environment variables and command-line
 // flags, validates the resulting values, and returns the initialized Config.
 func InitConfig() (*Config, error) {
@@ -102,6 +89,7 @@ func InitConfig() (*Config, error) {
 		logLevel                                string
 		endpointFileMode                        uint
 		allowBindMountFromString                string
+		dockerLabelPrefix                       string
 		defaultAllowFromValue                   = defaultAllowFrom
 		defaultAllowHealthcheckValue            = defaultAllowHealthcheck
 		defaultLogJSONValue                     = defaultLogJSON
@@ -115,6 +103,7 @@ func InitConfig() (*Config, error) {
 		defaultProxySocketEndpointValue         = defaultProxySocketEndpoint
 		defaultProxySocketEndpointFileModeValue = defaultProxySocketEndpointFileMode
 		defaultAllowBindMountFromValue          = defaultAllowBindMountFrom
+		defaultDockerLabelPrefixValue           = defaultDockerLabelPrefix
 		defaultProxyContainerNameValue          = defaultProxyContainerName
 	)
 
@@ -171,6 +160,9 @@ func InitConfig() (*Config, error) {
 	if val, ok := os.LookupEnv("SP_ALLOWBINDMOUNTFROM"); ok && val != "" {
 		defaultAllowBindMountFromValue = val
 	}
+	if val, ok := os.LookupEnv("SP_DOCKERLABELPREFIX"); ok && val != "" {
+		defaultDockerLabelPrefixValue = val
+	}
 	if val, ok := os.LookupEnv("SP_PROXYCONTAINERNAME"); ok && val != "" {
 		defaultProxyContainerNameValue = val
 	}
@@ -189,7 +181,7 @@ func InitConfig() (*Config, error) {
 	}
 
 	flag.StringVar(&allowFromString, "allowfrom", defaultAllowFromValue, "allowed IPs or hostname to connect to the proxy")
-	flag.BoolVar(&cfg.AllowHealthcheck, "allowhealthcheck", defaultAllowHealthcheckValue, "allow health check requests (HEAD http://127.0.0.1:55555/health)")
+	flag.BoolVar(&cfg.AllowHealthcheck, "allowhealthcheck", defaultAllowHealthcheckValue, "allow health check requests (HEAD http://localhost:55555/health)")
 	flag.BoolVar(&cfg.LogJSON, "logjson", defaultLogJSONValue, "log in JSON format (otherwise log in plain text")
 	flag.StringVar(&listenIP, "listenip", defaultListenIPValue, "ip address to listen on")
 	flag.StringVar(&logLevel, "loglevel", defaultLogLevelValue, "set log level: DEBUG, INFO, WARN, ERROR")
@@ -201,11 +193,16 @@ func InitConfig() (*Config, error) {
 	flag.StringVar(&cfg.ProxySocketEndpoint, "proxysocketendpoint", defaultProxySocketEndpointValue, "unix socket endpoint (if set, used instead of the TCP listener)")
 	flag.UintVar(&endpointFileMode, "proxysocketendpointfilemode", defaultProxySocketEndpointFileModeValue, "set the file mode of the unix socket endpoint")
 	flag.StringVar(&allowBindMountFromString, "allowbindmountfrom", defaultAllowBindMountFromValue, "allowed directories for bind mounts (comma-separated)")
+	flag.StringVar(&dockerLabelPrefix, "dockerlabelprefix", defaultDockerLabelPrefixValue, "prefix before .allow. in Docker container allowlist labels")
 	flag.StringVar(&cfg.ProxyContainerName, "proxycontainername", defaultProxyContainerNameValue, "socket-proxy Docker container name")
 	for i := range methodAllowLists {
 		flag.Var(&methodAllowLists[i].regexStrings, "allow"+methodAllowLists[i].method, "regex for "+methodAllowLists[i].method+" requests (not set means method is not allowed)")
 	}
 	flag.Parse()
+
+	if !dockerLabelPrefixRegexp.MatchString(dockerLabelPrefix) {
+		return nil, fmt.Errorf("invalid dockerlabelprefix %q: use lowercase letters, digits, dots, and hyphens only; dots and hyphens must separate alphanumeric parts", dockerLabelPrefix)
+	}
 
 	// init allowlist registry to configure default allowlist
 	cfg.AllowLists = &AllowListRegistry{}
@@ -292,254 +289,9 @@ func InitConfig() (*Config, error) {
 			return nil, err
 		}
 	}
+	allowedDockerLabelPrefix = dockerLabelPrefix + ".allow."
 
 	return &cfg, nil
-}
-
-// UpdateAllowLists populates the byIP allowlists then keeps them updated
-func (cfg *Config) UpdateAllowLists() {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	dockerClient, err := client.NewClientWithOpts(
-		client.WithHost("unix://"+cfg.SocketPath),
-		client.WithAPIVersionNegotiation(),
-	)
-	if err != nil {
-		slog.Error("failed to create Docker client", "error", err)
-		return
-	}
-	defer func(dockerClient *client.Client) {
-		err := dockerClient.Close()
-		if err != nil {
-			slog.Error("failed to close Docker client", "error", err)
-		}
-	}(dockerClient)
-
-	err = cfg.AllowLists.initByIP(ctx, dockerClient)
-	if err != nil {
-		slog.Error("failed to initialise non-default allowlists", "error", err)
-		return
-	}
-	slog.Debug("initialised non-default allowlists")
-
-	filter := filters.NewArgs()
-	filter.Add("type", "container")
-	filter.Add("event", "start")
-	filter.Add("event", "restart")
-	filter.Add("event", "die")
-	eventsChan, errChan := dockerClient.Events(ctx, events.ListOptions{Filters: filter})
-	slog.Debug("subscribed to Docker event stream to update allowlists")
-
-	// print non-default request allowlists
-	cfg.AllowLists.PrintByIP(cfg.LogJSON)
-
-	// handle Docker events to update allowlists
-	for {
-		select {
-		case event, ok := <-eventsChan:
-			if !ok {
-				slog.Info("Docker event stream closed")
-				return
-			}
-			containerName := eventContainerName(event)
-			slog.Debug("received Docker container event", "action", event.Action, "container", containerName)
-			addedIPs, removedIPs, updateErr := cfg.AllowLists.updateFromEvent(ctx, dockerClient, event)
-			if updateErr != nil {
-				slog.Warn("failed to update allowlists from container event", "error", updateErr)
-				continue
-			}
-			for _, ip := range addedIPs {
-				cfg.AllowLists.mutex.RLock()
-				allowList, found := cfg.AllowLists.byIP[ip]
-				cfg.AllowLists.mutex.RUnlock()
-				if found {
-					allowList.Print(ip, cfg.LogJSON)
-				}
-			}
-			for _, ip := range removedIPs {
-				slog.Info("removed allowlist for container", "container", containerName, "ip", ip)
-			}
-		case err := <-errChan:
-			if err != nil {
-				slog.Error("received error from Docker event stream", "error", err)
-				return
-			}
-		}
-	}
-}
-
-// PrintNetworks prints the allowed networks
-func (allowLists *AllowListRegistry) PrintNetworks() {
-	if len(allowLists.networks) > 0 {
-		slog.Info("socket proxy networks detected", "socketproxynetworks", allowLists.networks)
-	} else {
-		// we only log this on DEBUG level because the socket proxy networks are used for per-container allowlists
-		slog.Debug("no socket proxy networks detected")
-	}
-}
-
-// PrintDefault prints the default allowlist
-func (allowLists *AllowListRegistry) PrintDefault(logJSON bool) {
-	allowLists.Default.Print("", logJSON)
-}
-
-// PrintByIP prints the non-default allowlists
-func (allowLists *AllowListRegistry) PrintByIP(logJSON bool) {
-	allowLists.mutex.RLock()
-	defer allowLists.mutex.RUnlock()
-	for ip, allowList := range allowLists.byIP {
-		allowList.Print(ip, logJSON)
-	}
-}
-
-// FindByIP returns the allowlist corresponding to the given IP address if found
-func (allowLists *AllowListRegistry) FindByIP(ip string) (AllowList, bool) {
-	allowLists.mutex.RLock()
-	defer allowLists.mutex.RUnlock()
-	allowList, found := allowLists.byIP[ip]
-	return allowList, found
-}
-
-// initialise allowlist registry byIP allowlists
-func (allowLists *AllowListRegistry) initByIP(ctx context.Context, dockerClient *client.Client) error {
-	filter := filters.NewArgs()
-	for _, network := range allowLists.networks {
-		filter.Add("network", network)
-	}
-	containers, err := dockerClient.ContainerList(ctx, container.ListOptions{Filters: filter})
-	if err != nil {
-		return err
-	}
-
-	allowLists.mutex.Lock()
-	defer allowLists.mutex.Unlock()
-
-	allowLists.byIP = make(map[string]AllowList)
-
-	for _, cntr := range containers {
-		allowedRequests, allowedBindMounts, err := extractLabelData(cntr)
-		if err != nil {
-			allowLists.byIP = nil
-			return err
-		}
-
-		if len(allowedRequests) > 0 || len(allowedBindMounts) > 0 {
-			for networkID, cntrNetwork := range cntr.NetworkSettings.Networks {
-				if slices.Contains(allowLists.networks, networkID) {
-					allowList := AllowList{
-						ID:                cntr.ID,
-						ContainerName:     containerName(cntr),
-						AllowedRequests:   allowedRequests,
-						AllowedBindMounts: allowedBindMounts,
-					}
-
-					if len(cntrNetwork.IPAddress) > 0 {
-						allowLists.byIP[cntrNetwork.IPAddress] = allowList
-					}
-					if len(cntrNetwork.GlobalIPv6Address) > 0 {
-						allowLists.byIP[cntrNetwork.GlobalIPv6Address] = allowList
-					}
-				}
-			}
-		}
-	}
-
-	return nil
-}
-
-// update the allowlist registry based on the Docker event
-func (allowLists *AllowListRegistry) updateFromEvent(
-	ctx context.Context, dockerClient *client.Client, event events.Message,
-) ([]string, []string, error) {
-	containerID := event.Actor.ID
-	var (
-		addedIPs   []string
-		removedIPs []string
-		err        error
-	)
-
-	switch event.Action {
-	case "start", "restart":
-		addedIPs, err = allowLists.add(ctx, dockerClient, containerID)
-		if err != nil {
-			return nil, nil, err
-		}
-	case "die":
-		removedIPs = allowLists.remove(containerID)
-	}
-	return addedIPs, removedIPs, nil
-}
-
-// add the allowlist for the container with the given ID to the allowlist registry
-// if it has at least one socket-proxy allow label and is in a same network as the socket-proxy
-func (allowLists *AllowListRegistry) add(
-	ctx context.Context, dockerClient *client.Client, containerID string,
-) ([]string, error) {
-	filter := filters.NewArgs()
-	filter.Add("id", containerID)
-	for _, network := range allowLists.networks {
-		filter.Add("network", network)
-	}
-	containers, err := dockerClient.ContainerList(ctx, container.ListOptions{Filters: filter})
-	if err != nil {
-		return nil, err
-	}
-	if len(containers) == 0 {
-		slog.Debug("container is not in a network with socket-proxy or may have stopped", "id", shortContainerID(containerID))
-		return nil, nil
-	}
-	cntr := containers[0]
-
-	allowedRequests, allowedBindMounts, err := extractLabelData(cntr)
-	if err != nil {
-		return nil, err
-	}
-
-	var ips []string
-	if len(allowedRequests) > 0 || len(allowedBindMounts) > 0 {
-		allowList := AllowList{
-			ID:                cntr.ID,
-			ContainerName:     containerName(cntr),
-			AllowedRequests:   allowedRequests,
-			AllowedBindMounts: allowedBindMounts,
-		}
-
-		allowLists.mutex.Lock()
-		defer allowLists.mutex.Unlock()
-
-		for networkID, cntrNetwork := range cntr.NetworkSettings.Networks {
-			if slices.Contains(allowLists.networks, networkID) {
-				ipv4Address := cntrNetwork.IPAddress
-				if len(ipv4Address) > 0 {
-					allowLists.byIP[ipv4Address] = allowList
-					ips = append(ips, ipv4Address)
-				}
-				ipv6Address := cntrNetwork.GlobalIPv6Address
-				if len(ipv6Address) > 0 {
-					allowLists.byIP[ipv6Address] = allowList
-					ips = append(ips, ipv6Address)
-				}
-			}
-		}
-	}
-
-	return ips, nil
-}
-
-// remove allowlists having the given container ID from the allowlist registry
-func (allowLists *AllowListRegistry) remove(containerID string) []string {
-	allowLists.mutex.Lock()
-	defer allowLists.mutex.Unlock()
-
-	var removedIPs []string
-	for ip, allowList := range allowLists.byIP {
-		if allowList.ID == containerID {
-			delete(allowLists.byIP, ip)
-			removedIPs = append(removedIPs, ip)
-		}
-	}
-	return removedIPs
 }
 
 // Print prints the allowlist, including the IP address of the associated container if it is not empty,
@@ -596,33 +348,6 @@ func (allowList AllowList) Print(ip string, logJSON bool) {
 	}
 }
 
-// containerName returns Docker's container name without its leading slash.
-// It falls back to the short container ID for unusual responses without a name.
-func containerName(cntr container.Summary) string {
-	for _, name := range cntr.Names {
-		if name = strings.TrimPrefix(name, "/"); name != "" {
-			return name
-		}
-	}
-	return shortContainerID(cntr.ID)
-}
-
-// eventContainerName returns the name Docker includes with container events.
-// It falls back to the short container ID when the event has no name.
-func eventContainerName(event events.Message) string {
-	if name := event.Actor.Attributes["name"]; name != "" {
-		return name
-	}
-	return shortContainerID(event.Actor.ID)
-}
-
-func shortContainerID(id string) string {
-	if len(id) > 12 {
-		return id[:12]
-	}
-	return id
-}
-
 // compile allowed requests regex pattern
 func compileRegexp(regex, method, configLocation string) (*regexp.Regexp, error) {
 	r, err := regexp.Compile("^" + regex + "$")
@@ -661,81 +386,4 @@ func parseAllowedBindMounts(allowBindMountFromString string) ([]string, error) {
 		allowedBindMounts[i] = filepath.Clean(dir)
 	}
 	return allowedBindMounts, nil
-}
-
-// return list of docker networks that the socket-proxy container is in
-func listSocketProxyNetworks(socketPath, proxyContainerName string) ([]string, error) {
-	cntr, err := getSocketProxyContainerSummary(socketPath, proxyContainerName)
-	if err != nil {
-		return nil, err
-	}
-
-	networks := make([]string, 0, len(cntr.NetworkSettings.Networks))
-	for networkID := range cntr.NetworkSettings.Networks {
-		networks = append(networks, networkID)
-	}
-	return networks, nil
-}
-
-// return Docker container summary for the socket proxy container
-func getSocketProxyContainerSummary(socketPath, proxyContainerName string) (container.Summary, error) {
-	const maxTries = 3
-
-	dockerClient, err := client.NewClientWithOpts(
-		client.WithHost("unix://"+socketPath),
-		client.WithAPIVersionNegotiation(),
-	)
-	if err != nil {
-		return container.Summary{}, err
-	}
-	defer func(dockerClient *client.Client) {
-		err := dockerClient.Close()
-		if err != nil {
-			slog.Error("failed to close Docker client", "error", err)
-		}
-	}(dockerClient)
-
-	ctx := context.Background()
-	filter := filters.NewArgs()
-	filter.Add("name", proxyContainerName)
-	var containers []container.Summary
-	for i := 1; i <= maxTries; i++ {
-		containers, err = dockerClient.ContainerList(ctx, container.ListOptions{Filters: filter})
-		if err != nil {
-			return container.Summary{}, err
-		}
-		if len(containers) > 0 {
-			return containers[0], nil
-		}
-		if i < maxTries {
-			time.Sleep(time.Duration(i) * time.Second)
-		}
-	}
-	return container.Summary{}, fmt.Errorf("socket-proxy container \"%s\" was not found after %d attempts; verify the container name is correct and the container is running", proxyContainerName, maxTries)
-}
-
-// extract Docker container allowlist label data from the container summary
-func extractLabelData(cntr container.Summary) (map[string][]*regexp.Regexp, []string, error) {
-	allowedRequests := make(map[string][]*regexp.Regexp)
-	var allowedBindMounts []string
-	for labelName, labelValue := range cntr.Labels {
-		if strings.HasPrefix(labelName, allowedDockerLabelPrefix) && labelValue != "" {
-			allowSpec := strings.ToUpper(strings.TrimPrefix(labelName, allowedDockerLabelPrefix))
-			method, _, _ := strings.Cut(allowSpec, ".")
-			if slices.Contains(supportedHTTPMethods, method) {
-				r, err := compileRegexp(labelValue, method, "docker container label")
-				if err != nil {
-					return nil, nil, err
-				}
-				allowedRequests[method] = append(allowedRequests[method], r)
-			} else if allowSpec == "BINDMOUNTFROM" {
-				var err error
-				allowedBindMounts, err = parseAllowedBindMounts(labelValue)
-				if err != nil {
-					return nil, nil, err
-				}
-			}
-		}
-	}
-	return allowedRequests, allowedBindMounts, nil
 }
