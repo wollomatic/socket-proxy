@@ -286,7 +286,7 @@ socket-proxy can be configured via command-line parameters or via environment va
 
 1.12 - support use of allow* multiple times in env, flag and docker labels (thanks [@qianlongzt](https://github.com/qianlongzt))
 
-1.13 - harden bind mount restrictions across versioned and unversioned Docker API paths, local volume-driver bind options, volume creation, and `VolumesFrom`
+1.13 - harden bind mount restrictions (thanks [@shotintoeternity]), improve Docker label handling, fix IPv6 healthcheck bug
 
 ## License
 
