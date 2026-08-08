@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"net/http"
 	"path/filepath"
+	"regexp"
 	"strings"
 )
 
@@ -73,10 +74,45 @@ type (
 		// Source specifies the name of the mount. Depending on mount type, this
 		// may be a volume name or a host path, or even ignored.
 		// Source is not supported for tmpfs (must be an empty value)
-		Source string `json:",omitempty"`
-		Target string `json:",omitempty"`
+		Source        string              `json:",omitempty"`
+		Target        string              `json:",omitempty"`
+		VolumeOptions *mountVolumeOptions `json:",omitempty"`
+	}
+	// mountVolumeOptions is the subset of github.com/docker/docker/api/types/mount.VolumeOptions.
+	mountVolumeOptions struct {
+		DriverConfig *mountDriver `json:",omitempty"`
+	}
+	// mountDriver is the subset of github.com/docker/docker/api/types/mount.Driver.
+	mountDriver struct {
+		Name    string            `json:",omitempty"`
+		Options map[string]string `json:",omitempty"`
 	}
 )
+
+// apiVersionSegment matches the optional Docker API version prefix, as in
+// /v1.54/containers/create. The daemon serves the same endpoints without it.
+var apiVersionSegment = regexp.MustCompile(`^v[0-9]+(\.[0-9]+)*$`)
+
+// normalizeAPIPath adds a synthetic version prefix when the client omitted one,
+// so that /containers/create and /v1.54/containers/create are inspected alike.
+func normalizeAPIPath(path string) string {
+	parts := strings.Split(path, "/")
+	if len(parts) > 1 && apiVersionSegment.MatchString(parts[1]) {
+		return path
+	}
+	return "/v0" + path
+}
+
+// driverDeviceSource returns the host path a volume mount binds to, if it uses
+// the built-in local driver's bind options. "docker volume create -o
+// type=none -o o=bind -o device=/host/path" makes a volume mount an ordinary
+// host bind, so such a mount has to be validated like one.
+func driverDeviceSource(opts *mountVolumeOptions) string {
+	if opts == nil || opts.DriverConfig == nil {
+		return ""
+	}
+	return opts.DriverConfig.Options["device"]
+}
 
 // checkBindMountRestrictions checks if bind mounts in the request are allowed.
 func checkBindMountRestrictions(allowedBindMounts []string, r *http.Request) error {
@@ -90,7 +126,7 @@ func checkBindMountRestrictions(allowedBindMounts []string, r *http.Request) err
 	}
 
 	// Check different API endpoints that can use bind mounts
-	pathParts := strings.Split(r.URL.Path, "/")
+	pathParts := strings.Split(normalizeAPIPath(r.URL.Path), "/")
 	switch {
 	case len(pathParts) >= 4 && pathParts[2] == "containers" && pathParts[3] == "create":
 		// Container creation: /vX.xx/containers/create
@@ -166,6 +202,13 @@ func checkHostConfigBindMounts(allowedBindMounts []string, hostConfig *container
 	for _, mountItem := range hostConfig.Mounts {
 		if mountItem.Type == mountTypeBind {
 			if err := validateBindMountSource(allowedBindMounts, mountItem.Source); err != nil {
+				return err
+			}
+		}
+		// A volume mount whose driver options carry a device= is a host bind in
+		// all but name, so validate its device the same way.
+		if device := driverDeviceSource(mountItem.VolumeOptions); device != "" {
+			if err := validateBindMountSource(allowedBindMounts, device); err != nil {
 				return err
 			}
 		}
