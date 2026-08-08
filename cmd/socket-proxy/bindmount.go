@@ -5,9 +5,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log/slog"
 	"net/http"
 	"path/filepath"
+	"regexp"
 	"strings"
 )
 
@@ -43,6 +43,8 @@ type mountType string
 const (
 	// mountTypeBind is the type for mounting host dir.
 	mountTypeBind mountType = "bind"
+	// mountTypeVolume is the type for mounting volumes.
+	mountTypeVolume mountType = "volume"
 )
 
 type (
@@ -52,8 +54,14 @@ type (
 	}
 	// containerHostConfig is the subset of github.com/docker/docker/api/types/container.HostConfig.
 	containerHostConfig struct {
-		Binds  []string     // List of volume bindings for this container.
-		Mounts []mountMount `json:",omitempty"` // Mounts specs used by the container.
+		Binds       []string     // List of volume bindings for this container.
+		Mounts      []mountMount `json:",omitempty"` // Mounts specs used by the container.
+		VolumesFrom []string     `json:",omitempty"` // List of volumes to take from other containers.
+	}
+	// volumeCreateRequest is the subset of github.com/docker/docker/api/types/volume.CreateOptions.
+	volumeCreateRequest struct {
+		Driver     string            `json:",omitempty"`
+		DriverOpts map[string]string `json:",omitempty"`
 	}
 	// swarmServiceSpec is the subset of github.com/docker/docker/api/types/swarm.ServiceSpec.
 	swarmServiceSpec struct {
@@ -73,10 +81,75 @@ type (
 		// Source specifies the name of the mount. Depending on mount type, this
 		// may be a volume name or a host path, or even ignored.
 		// Source is not supported for tmpfs (must be an empty value)
-		Source string `json:",omitempty"`
-		Target string `json:",omitempty"`
+		Source        string              `json:",omitempty"`
+		Target        string              `json:",omitempty"`
+		VolumeOptions *mountVolumeOptions `json:",omitempty"`
+	}
+	// mountVolumeOptions is the subset of github.com/docker/docker/api/types/mount.VolumeOptions.
+	mountVolumeOptions struct {
+		DriverConfig *mountDriver `json:",omitempty"`
+	}
+	// mountDriver is the subset of github.com/docker/docker/api/types/mount.Driver.
+	mountDriver struct {
+		Name    string            `json:",omitempty"`
+		Options map[string]string `json:",omitempty"`
 	}
 )
+
+// apiVersionSegment matches the optional Docker API version prefix, as in
+// /v1.54/containers/create. The daemon serves the same endpoints without it.
+var apiVersionSegment = regexp.MustCompile(`^v[0-9]+(\.[0-9]+)*$`)
+
+// normalizeAPIPath adds a synthetic version prefix when the client omitted one,
+// so that /containers/create and /v1.54/containers/create are inspected alike.
+func normalizeAPIPath(path string) string {
+	parts := strings.Split(path, "/")
+	if len(parts) > 1 && apiVersionSegment.MatchString(parts[1]) {
+		return path
+	}
+	return "/v0" + path
+}
+
+// driverDeviceSource returns the host path a volume mount binds to when it uses
+// the built-in local driver's bind or recursive-bind option.
+func driverDeviceSource(opts *mountVolumeOptions) string {
+	if opts == nil || opts.DriverConfig == nil {
+		return ""
+	}
+	return localDriverDeviceSource(opts.DriverConfig)
+}
+
+// localDriverDeviceSource returns the local driver's device only when its
+// mount options explicitly request bind semantics. Other local-driver uses,
+// such as NFS, CIFS, and block devices, also use device but are not host binds.
+func localDriverDeviceSource(driver *mountDriver) string {
+	if driver == nil || (driver.Name != "" && driver.Name != "local") {
+		return ""
+	}
+	if !hasMountOption(driver.Options["o"], "bind") && !hasMountOption(driver.Options["o"], "rbind") {
+		return ""
+	}
+	return driver.Options["device"]
+}
+
+func hasMountOption(options string, wanted string) bool {
+	for option := range strings.SplitSeq(options, ",") {
+		if strings.TrimSpace(option) == wanted {
+			return true
+		}
+	}
+	return false
+}
+
+func validateDriverDeviceSource(allowedBindMounts []string, device string) error {
+	if device == "" {
+		return nil
+	}
+	if !strings.HasPrefix(device, "/") {
+		return fmt.Errorf("local volume driver bind device must be an absolute path: %s", device)
+	}
+	return validateBindMountSource(allowedBindMounts, device)
+}
 
 // checkBindMountRestrictions checks if bind mounts in the request are allowed.
 func checkBindMountRestrictions(allowedBindMounts []string, r *http.Request) error {
@@ -90,7 +163,7 @@ func checkBindMountRestrictions(allowedBindMounts []string, r *http.Request) err
 	}
 
 	// Check different API endpoints that can use bind mounts
-	pathParts := strings.Split(r.URL.Path, "/")
+	pathParts := strings.Split(normalizeAPIPath(r.URL.Path), "/")
 	switch {
 	case len(pathParts) >= 4 && pathParts[2] == "containers" && pathParts[3] == "create":
 		// Container creation: /vX.xx/containers/create
@@ -104,6 +177,9 @@ func checkBindMountRestrictions(allowedBindMounts []string, r *http.Request) err
 	case len(pathParts) >= 5 && pathParts[2] == "services" && pathParts[4] == "update":
 		// Service update: /vX.xx/services/{id}/update
 		return checkService(allowedBindMounts, r)
+	case len(pathParts) >= 4 && pathParts[2] == "volumes" && pathParts[3] == "create":
+		// Volume creation: /vX.xx/volumes/create
+		return checkVolumeCreate(allowedBindMounts, r)
 	default:
 		return nil
 	}
@@ -118,8 +194,7 @@ func checkContainer(allowedBindMounts []string, r *http.Request) error {
 
 	var req containerCreateRequest
 	if err := json.Unmarshal(body, &req); err != nil {
-		slog.Debug("failed to parse container request", "error", err)
-		return nil // Don't block if we can't parse.
+		return fmt.Errorf("failed to parse container request: %w", err)
 	}
 
 	return checkHostConfigBindMounts(allowedBindMounts, req.HostConfig)
@@ -134,8 +209,7 @@ func checkService(allowedBindMounts []string, r *http.Request) error {
 
 	var req swarmServiceSpec
 	if err := json.Unmarshal(body, &req); err != nil {
-		slog.Debug("failed to parse service request", "error", err)
-		return nil // Don't block if we can't parse.
+		return fmt.Errorf("failed to parse service request: %w", err)
 	}
 
 	if req.TaskTemplate.ContainerSpec == nil {
@@ -149,10 +223,29 @@ func checkService(allowedBindMounts []string, r *http.Request) error {
 	)
 }
 
+// checkVolumeCreate checks local-driver bind options in volume creation requests.
+func checkVolumeCreate(allowedBindMounts []string, r *http.Request) error {
+	body, err := readAndRestoreBody(r)
+	if err != nil {
+		return err
+	}
+
+	var req volumeCreateRequest
+	if err := json.Unmarshal(body, &req); err != nil {
+		return fmt.Errorf("failed to parse volume create request: %w", err)
+	}
+
+	device := localDriverDeviceSource(&mountDriver{Name: req.Driver, Options: req.DriverOpts})
+	return validateDriverDeviceSource(allowedBindMounts, device)
+}
+
 // checkHostConfigBindMounts checks bind mounts in HostConfig.
 func checkHostConfigBindMounts(allowedBindMounts []string, hostConfig *containerHostConfig) error {
 	if hostConfig == nil {
 		return nil // No HostConfig, nothing to check
+	}
+	if len(hostConfig.VolumesFrom) != 0 {
+		return fmt.Errorf("volumes-from is not allowed when bind mount restrictions are configured")
 	}
 
 	// Check legacy Binds field
@@ -166,6 +259,14 @@ func checkHostConfigBindMounts(allowedBindMounts []string, hostConfig *container
 	for _, mountItem := range hostConfig.Mounts {
 		if mountItem.Type == mountTypeBind {
 			if err := validateBindMountSource(allowedBindMounts, mountItem.Source); err != nil {
+				return err
+			}
+		}
+		// A local volume mount using bind semantics is a host bind in all but
+		// name, so validate its device the same way.
+		if mountItem.Type == mountTypeVolume {
+			device := driverDeviceSource(mountItem.VolumeOptions)
+			if err := validateDriverDeviceSource(allowedBindMounts, device); err != nil {
 				return err
 			}
 		}

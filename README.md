@@ -1,7 +1,7 @@
 # socket-proxy
 
 ## Latest image
-- `wollomatic/socket-proxy:1.12.3` / `ghcr.io/wollomatic/socket-proxy:1.12.3`
+- `wollomatic/socket-proxy:1.13.0` / `ghcr.io/wollomatic/socket-proxy:1.13.0`
 - `wollomatic/socket-proxy:1` / `ghcr.io/wollomatic/socket-proxy:1`
 
 > [!IMPORTANT]
@@ -38,7 +38,7 @@ You should know what you are doing. Never expose socket-proxy to a public networ
 The container image is available on [Docker Hub (wollomatic/socket-proxy)](https://hub.docker.com/r/wollomatic/socket-proxy) 
 and on the [GitHub Container Registry (ghcr.io/wollomatic/socket-proxy)](https://github.com/wollomatic/socket-proxy/pkgs/container/socket-proxy).
 
-To pin one specific version, use the version tag (for example, `wollomatic/socket-proxy:1.11.0` or `ghcr.io/wollomatic/socket-proxy:1.11.0`).
+To pin one specific version, use the version tag (for example, `wollomatic/socket-proxy:1.13.0` or `ghcr.io/wollomatic/socket-proxy:1.13.0`).
 To always use the most recent version, use the `1` tag (`wollomatic/socket-proxy:1` or `ghcr.io/wollomatic/socket-proxy:1`). This tag will be valid as long as there is no breaking change in the deployment.
 
 There may be an additional docker image with the `testing`-tag. This image is only for testing. Likely, documentation for the `testing` image could only be found in the GitHub commit messages. It is not recommended to use the `testing` image in production.
@@ -119,15 +119,16 @@ To determine which HTTP requests your client application uses, you could switch 
 
 By default, socket-proxy does not restrict bind mounts. If you want to add an additional layer of security by restricting which directories can be used as bind mount sources, you can use the `-allowbindmountfrom` parameter or the `SP_ALLOWBINDMOUNTFROM` environment variable.
 
-When configured, only bind mounts from the specified directories or their subdirectories are allowed. Each directory must start with `/`. Multiple directories can be specified separated by commas.
+When configured, socket-proxy inspects supported Docker API requests and only allows direct host bind sources from the specified directories or their subdirectories. Each directory must start with `/`. Multiple directories can be specified separated by commas.
 
 For example:
 + `-allowbindmountfrom=/home,/var/log` allows bind mounts from `/home`, `/var/log`, and any subdirectories like `/home/user/data` or `/var/log/app`
 + `SP_ALLOWBINDMOUNTFROM="/app/data,/tmp"` allows bind mounts from `/app/data` and `/tmp` directories
 
-Bind mount restrictions are applied to relevant Docker API endpoints and work with both legacy bind mount syntax (`-v /host/path:/container/path`) and modern mount syntax.
+Bind mount restrictions are applied to versioned and unversioned container, Swarm service, and volume-create endpoints. They cover legacy bind syntax (`-v /host/path:/container/path`), modern bind mounts, and local volume-driver options that use `o=bind` or `o=rbind`. `VolumesFrom` is rejected while this restriction is active because the referenced container's mount sources are not present in the request being checked. Other volume types, including ordinary named volumes, NFS, CIFS, block-device volumes, and custom volume drivers, are not treated as host bind mounts.
 
-**Note**: This feature only restricts bind mounts. Other mount types (volumes, tmpfs, etc.) are not affected by this restriction.
+> [!WARNING]
+> This option is a request filter, not a sandbox for otherwise untrusted Docker API clients. It cannot resolve host-side symbolic links, inspect a named volume that was created outside the filtered `/volumes/create` endpoint, or determine what a custom volume plugin exposes. It also does not restrict other host-access mechanisms such as privileged containers, host namespaces, added capabilities, or device mappings. Do not grant container- or service-creation endpoints to clients that must not control the Docker host; use the HTTP method/path allowlists, network isolation, and Docker authorization controls as additional boundaries.
 
 #### Setting up per-container allowlists
 
@@ -242,7 +243,7 @@ socket-proxy can be configured via command-line parameters or via environment va
 | Parameter                      | Environment Variable             | Default Value          | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
 |--------------------------------|----------------------------------|------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | `-allowfrom`                   | `SP_ALLOWFROM`                   | `127.0.0.1/32`         | Specifies the IP addresses or hostnames (comma-separated) of the clients or the hostname of one specific client allowed to connect to the proxy. The default value is `127.0.0.1/32`, which means only localhost is allowed. This default configuration may not be useful in most cases, but it is because of a secure-by-default design. To allow all IPv4 addresses, set `-allowfrom=0.0.0.0/0`. Alternatively, hostnames can be set, for example `-allowfrom=traefik`, or `-allowfrom=traefik,dozzle`. Please remember that socket-proxy should never be exposed to a public network, regardless of this extra security layer. |
-| `-allowbindmountfrom`          | `SP_ALLOWBINDMOUNTFROM`          | (not set)              | Specifies the directories (comma-separated) that are allowed as bind mount sources. If not set, no bind mount restrictions are applied. When set, only bind mounts from the specified directories or their subdirectories are allowed. Each directory must start with `/`. For example, `-allowbindmountfrom=/home,/var/log` allows bind mounts from `/home`, `/var/log`, and any subdirectories.                                                                                                                                                                                                                                 |
+| `-allowbindmountfrom`          | `SP_ALLOWBINDMOUNTFROM`          | (not set)              | Restricts direct host bind sources found in supported Docker API requests to the specified directories and their subdirectories. It covers legacy and modern binds plus local volume-driver `bind`/`rbind` options, and rejects `VolumesFrom`. It is a request filter with the limitations documented above, not a sandbox for untrusted Docker API clients. Each comma-separated directory must start with `/`.                                                                                                                                                                                                                         |
 | `-allowhealthcheck`            | `SP_ALLOWHEALTHCHECK`            | (not set/false)        | If set, it allows the included health check binary to check the socket connection via TCP port 55555 (socket-proxy then listens on `127.0.0.1:55555/health`)                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
 | `-listenip`                    | `SP_LISTENIP`                    | `127.0.0.1`            | Specifies the IP address the server will bind on. Default is only the internal network.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
 | `-logjson`                     | `SP_LOGJSON`                     | (not set/false)        | If set, it enables logging in JSON format. If unset, socket-proxy logs in plain text format.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
@@ -284,6 +285,8 @@ socket-proxy can be configured via command-line parameters or via environment va
 1.11 - add per-container allowlists specified by Docker container labels (thanks [@amanda-wee](https://github.com/amanda-wee))
 
 1.12 - support use of allow* multiple times in env, flag and docker labels (thanks [@qianlongzt](https://github.com/qianlongzt))
+
+1.13 - harden bind mount restrictions across versioned and unversioned Docker API paths, local volume-driver bind options, volume creation, and `VolumesFrom`
 
 ## License
 

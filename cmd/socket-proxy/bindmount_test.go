@@ -2,10 +2,77 @@ package main
 
 import (
 	"bytes"
+	"io"
 	"net/http"
 	"runtime"
+	"strings"
 	"testing"
 )
+
+func TestNormalizeAPIPath(t *testing.T) {
+	tests := map[string]string{
+		"/containers/create":       "/v0/containers/create",
+		"/services/create":         "/v0/services/create",
+		"/v1.54/containers/create": "/v1.54/containers/create",
+		"/v2/services/create":      "/v2/services/create",
+	}
+
+	for input, expected := range tests {
+		if actual := normalizeAPIPath(input); actual != expected {
+			t.Errorf("normalizeAPIPath(%q) = %q, expected %q", input, actual, expected)
+		}
+	}
+}
+
+func TestDriverDeviceSource(t *testing.T) {
+	tests := []struct {
+		name     string
+		driver   *mountDriver
+		expected string
+	}{
+		{name: "nil driver"},
+		{name: "plain local volume", driver: &mountDriver{Name: "local"}},
+		{
+			name:     "local bind",
+			driver:   &mountDriver{Name: "local", Options: map[string]string{"o": "bind", "device": "/host"}},
+			expected: "/host",
+		},
+		{
+			name:     "implicit local recursive bind",
+			driver:   &mountDriver{Options: map[string]string{"o": "rw, rbind", "device": "/host"}},
+			expected: "/host",
+		},
+		{
+			name:   "custom driver bind options",
+			driver: &mountDriver{Name: "custom", Options: map[string]string{"o": "bind", "device": "/host"}},
+		},
+		{
+			name:   "local nfs volume",
+			driver: &mountDriver{Name: "local", Options: map[string]string{"type": "nfs", "o": "addr=10.0.0.1,rw", "device": ":/export"}},
+		},
+		{
+			name:   "local cifs volume",
+			driver: &mountDriver{Name: "local", Options: map[string]string{"type": "cifs", "o": "addr=10.0.0.1,rw", "device": "//server/share"}},
+		},
+		{
+			name:   "local block device",
+			driver: &mountDriver{Name: "local", Options: map[string]string{"type": "ext4", "device": "/dev/sda1"}},
+		},
+		{
+			name:   "bind substring is not an option",
+			driver: &mountDriver{Name: "local", Options: map[string]string{"o": "bindable", "device": "/host"}},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			actual := localDriverDeviceSource(tt.driver)
+			if actual != tt.expected {
+				t.Errorf("localDriverDeviceSource() = %q, expected %q", actual, tt.expected)
+			}
+		})
+	}
+}
 
 func skipIfNotUnix(t *testing.T) {
 	switch runtime.GOOS {
@@ -128,6 +195,7 @@ func TestCheckBindMountRestrictions(t *testing.T) {
 		path       string
 		body       string
 		shouldPass bool
+		errorText  string
 	}{
 		{
 			name:       "GET request should pass",
@@ -151,11 +219,26 @@ func TestCheckBindMountRestrictions(t *testing.T) {
 			shouldPass: true,
 		},
 		{
+			name:       "unversioned container create with allowed bind",
+			method:     "POST",
+			path:       "/containers/create",
+			body:       `{"HostConfig":{"Binds":["/home/user:/app"]}}`,
+			shouldPass: true,
+		},
+		{
 			name:       "container create with disallowed bind",
 			method:     "POST",
 			path:       "/v1.40/containers/create",
 			body:       `{"HostConfig":{"Binds":["/etc:/app"]}}`,
 			shouldPass: false,
+		},
+		{
+			name:       "unversioned container create with disallowed bind",
+			method:     "POST",
+			path:       "/containers/create",
+			body:       `{"HostConfig":{"Binds":["/:/hostroot"]}}`,
+			shouldPass: false,
+			errorText:  "bind mount source directory not allowed",
 		},
 		{
 			name:       "path traversal attack",
@@ -172,6 +255,72 @@ func TestCheckBindMountRestrictions(t *testing.T) {
 			shouldPass: true,
 		},
 		{
+			name:   "container create with disallowed local driver bind",
+			method: "POST",
+			path:   "/v1.54/containers/create",
+			body: `{"HostConfig":{"Mounts":[{"Type":"volume","Target":"/hostroot","VolumeOptions":{"DriverConfig":` +
+				`{"Name":"local","Options":{"type":"none","device":"/","o":"bind"}}}}]}}`,
+			shouldPass: false,
+			errorText:  "bind mount source directory not allowed",
+		},
+		{
+			name:   "container create with allowed local driver bind",
+			method: "POST",
+			path:   "/v1.54/containers/create",
+			body: `{"HostConfig":{"Mounts":[{"Type":"volume","Target":"/data","VolumeOptions":{"DriverConfig":` +
+				`{"Name":"local","Options":{"type":"none","device":"/home/data","o":"rw,bind"}}}}]}}`,
+			shouldPass: true,
+		},
+		{
+			name:   "container create with disallowed local driver recursive bind",
+			method: "POST",
+			path:   "/v1.54/containers/create",
+			body: `{"HostConfig":{"Mounts":[{"Type":"volume","Target":"/hostroot","VolumeOptions":{"DriverConfig":` +
+				`{"Name":"local","Options":{"device":"/","o":"rw,rbind"}}}}]}}`,
+			shouldPass: false,
+			errorText:  "bind mount source directory not allowed",
+		},
+		{
+			name:   "container create with relative local driver bind device",
+			method: "POST",
+			path:   "/v1.54/containers/create",
+			body: `{"HostConfig":{"Mounts":[{"Type":"volume","Target":"/data","VolumeOptions":{"DriverConfig":` +
+				`{"Name":"local","Options":{"device":"relative/path","o":"bind"}}}}]}}`,
+			shouldPass: false,
+			errorText:  "local volume driver bind device must be an absolute path",
+		},
+		{
+			name:       "container create with plain named volume",
+			method:     "POST",
+			path:       "/v1.54/containers/create",
+			body:       `{"HostConfig":{"Mounts":[{"Type":"volume","Source":"data","Target":"/data"}]}}`,
+			shouldPass: true,
+		},
+		{
+			name:   "container create with local NFS volume",
+			method: "POST",
+			path:   "/v1.54/containers/create",
+			body: `{"HostConfig":{"Mounts":[{"Type":"volume","Target":"/data","VolumeOptions":{"DriverConfig":` +
+				`{"Name":"local","Options":{"type":"nfs","device":":/export","o":"addr=10.0.0.1,rw"}}}}]}}`,
+			shouldPass: true,
+		},
+		{
+			name:   "container create with local CIFS volume",
+			method: "POST",
+			path:   "/v1.54/containers/create",
+			body: `{"HostConfig":{"Mounts":[{"Type":"volume","Target":"/data","VolumeOptions":{"DriverConfig":` +
+				`{"Name":"local","Options":{"type":"cifs","device":"//server/share","o":"addr=10.0.0.1,rw"}}}}]}}`,
+			shouldPass: true,
+		},
+		{
+			name:       "container create with volumes-from",
+			method:     "POST",
+			path:       "/v1.54/containers/create",
+			body:       `{"HostConfig":{"VolumesFrom":["source-container:rw"]}}`,
+			shouldPass: false,
+			errorText:  "volumes-from is not allowed",
+		},
+		{
 			name:       "container update with bind mount",
 			method:     "POST",
 			path:       "/v1.40/containers/abc123/update",
@@ -184,6 +333,104 @@ func TestCheckBindMountRestrictions(t *testing.T) {
 			path:       "/v1.40/services/create",
 			body:       `{"TaskTemplate":{"ContainerSpec":{"Mounts":[{"Type":"bind","Source":"/etc","Target":"/app"}]}}}`,
 			shouldPass: false,
+		},
+		{
+			name:       "unversioned service create with bind mount",
+			method:     "POST",
+			path:       "/services/create",
+			body:       `{"TaskTemplate":{"ContainerSpec":{"Mounts":[{"Type":"bind","Source":"/etc","Target":"/app"}]}}}`,
+			shouldPass: false,
+		},
+		{
+			name:   "service create with disallowed local driver bind",
+			method: "POST",
+			path:   "/v1.54/services/create",
+			body: `{"TaskTemplate":{"ContainerSpec":{"Mounts":[{"Type":"volume","Target":"/hostroot","VolumeOptions":` +
+				`{"DriverConfig":{"Name":"local","Options":{"device":"/","o":"bind"}}}}]}}}`,
+			shouldPass: false,
+			errorText:  "bind mount source directory not allowed",
+		},
+		{
+			name:       "unversioned service update with bind mount",
+			method:     "POST",
+			path:       "/services/service-id/update",
+			body:       `{"TaskTemplate":{"ContainerSpec":{"Mounts":[{"Type":"bind","Source":"/etc","Target":"/app"}]}}}`,
+			shouldPass: false,
+		},
+		{
+			name:       "versioned volume create with disallowed bind",
+			method:     "POST",
+			path:       "/v1.54/volumes/create",
+			body:       `{"Driver":"local","DriverOpts":{"type":"none","device":"/","o":"bind"}}`,
+			shouldPass: false,
+			errorText:  "bind mount source directory not allowed",
+		},
+		{
+			name:       "unversioned volume create with disallowed recursive bind",
+			method:     "POST",
+			path:       "/volumes/create",
+			body:       `{"Driver":"local","DriverOpts":{"device":"/","o":"rbind,rw"}}`,
+			shouldPass: false,
+		},
+		{
+			name:       "unversioned volume create with allowed bind",
+			method:     "POST",
+			path:       "/volumes/create",
+			body:       `{"DriverOpts":{"type":"none","device":"/home/data","o":"bind"}}`,
+			shouldPass: true,
+		},
+		{
+			name:       "volume create with relative local bind device",
+			method:     "POST",
+			path:       "/volumes/create",
+			body:       `{"Driver":"local","DriverOpts":{"device":"relative/path","o":"bind"}}`,
+			shouldPass: false,
+			errorText:  "local volume driver bind device must be an absolute path",
+		},
+		{
+			name:       "volume create with plain local volume",
+			method:     "POST",
+			path:       "/v1.54/volumes/create",
+			body:       `{"Name":"data","Driver":"local"}`,
+			shouldPass: true,
+		},
+		{
+			name:       "volume create with NFS volume",
+			method:     "POST",
+			path:       "/v1.54/volumes/create",
+			body:       `{"Driver":"local","DriverOpts":{"type":"nfs","device":":/export","o":"addr=10.0.0.1,rw"}}`,
+			shouldPass: true,
+		},
+		{
+			name:       "volume create with custom driver bind options",
+			method:     "POST",
+			path:       "/v1.54/volumes/create",
+			body:       `{"Driver":"custom","DriverOpts":{"device":"/","o":"bind"}}`,
+			shouldPass: true,
+		},
+		{
+			name:       "malformed container create is rejected",
+			method:     "POST",
+			path:       "/containers/create",
+			body:       `{"HostConfig":`,
+			shouldPass: false,
+			errorText:  "failed to parse container request",
+		},
+		{
+			name:       "malformed service create is rejected",
+			method:     "POST",
+			path:       "/services/create",
+			body:       `{"TaskTemplate":`,
+			shouldPass: false,
+			errorText:  "failed to parse service request",
+		},
+		{
+			name:       "malformed volume create is rejected",
+			method:     "POST",
+			path:       "/volumes/create",
+			body:       `{"DriverOpts":`,
+			shouldPass: false,
+			errorText:  "failed to parse volume create request",
 		},
 		{
 			name:       "v2 API should work too",
@@ -208,6 +455,36 @@ func TestCheckBindMountRestrictions(t *testing.T) {
 			if !tt.shouldPass && err == nil {
 				t.Errorf("expected request to fail, but it passed")
 			}
+			if err != nil && tt.errorText != "" && !strings.Contains(err.Error(), tt.errorText) {
+				t.Errorf("expected error to contain %q, got %q", tt.errorText, err)
+			}
+
+			restoredBody, readErr := io.ReadAll(req.Body)
+			if readErr != nil {
+				t.Fatalf("failed to read restored request body: %v", readErr)
+			}
+			if string(restoredBody) != tt.body {
+				t.Errorf("request body was not restored: got %q, expected %q", restoredBody, tt.body)
+			}
 		})
+	}
+}
+
+func TestNoBindMountRestrictionsLeavesRequestUnchanged(t *testing.T) {
+	body := `{"HostConfig":`
+	req, err := http.NewRequest(http.MethodPost, "/containers/create", bytes.NewBufferString(body))
+	if err != nil {
+		t.Fatalf("failed to create request: %v", err)
+	}
+
+	if err := checkBindMountRestrictions(nil, req); err != nil {
+		t.Fatalf("expected disabled bind mount restriction to pass: %v", err)
+	}
+	actualBody, err := io.ReadAll(req.Body)
+	if err != nil {
+		t.Fatalf("failed to read request body: %v", err)
+	}
+	if string(actualBody) != body {
+		t.Errorf("request body changed: got %q, expected %q", actualBody, body)
 	}
 }
