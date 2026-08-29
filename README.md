@@ -5,15 +5,15 @@
 - `wollomatic/socket-proxy:1` / `ghcr.io/wollomatic/socket-proxy:1`
 
 > [!IMPORTANT]
->## Usage with Traefik >= 2.11.31 / >= 3.6.1
->Due to a change in how Traefik retrieves the Docker API version (traefik/traefik#12256), the Socket-Proxy configuration for Traefik must be updated to allow `HEAD` requests to `/_ping`:
+> ## Usage with Traefik >= 2.11.31 / >= 3.6.1
+> [Due to a change in how Traefik retrieves the Docker API version](https://github.com/traefik/traefik/pull/12256), the Socket-proxy configuration for Traefik must be updated to allow `HEAD` requests to `/_ping`:
 >
 >      - '-allowHEAD=/_ping'
 >
->Otherwise, Traefik would fall back to API version 1.51, which would break the Docker provider on older Docker versions.
+> Otherwise, Traefik would fall back to API version 1.51, which would break the Docker provider on older Docker versions.
 
 ## About
-`socket-proxy` is a lightweight, secure-by-default unix socket proxy. Although it was created to proxy the docker socket to Traefik, it can also be used for other purposes.
+Socket-proxy is a lightweight, secure-by-default Unix socket proxy. It was originally created to proxy the Docker socket to Traefik and found lots of other purposes since.
 It is heavily inspired by [tecnativa/docker-socket-proxy](https://github.com/Tecnativa/docker-socket-proxy).
 
 As an additional benefit, socket-proxy can be used to examine the API calls of the client application.
@@ -21,17 +21,16 @@ As an additional benefit, socket-proxy can be used to examine the API calls of t
 The advantage over other solutions is the very slim container image (from-scratch-image) without any external dependencies (no OS, no packages, just the Go standard library).
 It is designed with security in mind, so there are secure defaults and an additional security layer (IP address-based access control) compared to most other solutions.
 
-The allowlist is configured for each HTTP method separately using the Go regexp syntax, allowing fine-grained control over the allowed HTTP methods. In bridge network mode, each container that uses socket-proxy can be configured with its own allowlist.
+The allowlist is configured for each HTTP method separately using the Go regexp syntax, allowing fine-grained control over the allowed API calls. In bridge network mode, each container that uses socket-proxy can be configured with its own allowlist using Docker labels.
 
-The source code is available on [GitHub: wollomatic/socket-proxy](https://github.com/wollomatic/socket-proxy)
+The source code is available on the [wollomatic/socket-proxy GitHub repository](https://github.com/wollomatic/socket-proxy)
 
 ## Getting Started
 
-Some examples can be found in the [wiki](https://github.com/wollomatic/socket-proxy/wiki) and in the `examples` directory of the repo.
+Some examples can be found in this repository's [wiki](https://github.com/wollomatic/socket-proxy/wiki) and the [`examples` directory](https://github.com/wollomatic/socket-proxy/tree/main/examples/docker-compose).
 
-### Warning
-
-You should know what you are doing. Never expose socket-proxy to a public network. It is meant to be used in a secure environment only.
+> [!WARNING]
+> You should know what you are doing. Never expose socket-proxy to a public network. It is meant to be used in a secure environment only.
 
 ### Installing
 
@@ -49,32 +48,110 @@ As of version 1.6, all multi-arch images are signed.
 ### Migrating from other Docker socket proxies
 
 > [!TIP]
-> If you are coming from `tecnativa/docker-socket-proxy` or `linuxserver/docker-socket-proxy`, configuring a regular expression allowlist may seem more complex at first.
+> If you are coming from [tecnativa's docker-socket-proxy](https://github.com/Tecnativa/docker-socket-proxy) or [linuxserver's docker-socket-proxy](https://github.com/linuxserver/docker-socket-proxy), configuring a regular expression allowlist may seem more complex at first.
 >
-> To simplify migration, you can use the [Socket Proxy Configuration Converter](https://socket-proxy-configurator.wollomatic.dev/). The tool runs entirely in your browser and converts existing `docker-socket-proxy` environment variable configurations into equivalent regular expression allowlists for `wollomatic/socket-proxy`.
+> To simplify this migration, we provide a [Socket Proxy Configuration Converter](https://socket-proxy-configurator.wollomatic.dev/). The tool runs entirely in your browser and converts your existing docker-socket-proxy environment variable configurations into equivalent regular expression allowlists for [wollomatic's socket-proxy](https://github.com/wollomatic/socket-proxy).
 >
-> The converter is fully open source. Its source code is available at [wollomatic/socket-proxy-configurator](https://github.com/wollomatic/socket-proxy-configurator).
+> The converter's source code is available at [wollomatic/socket-proxy-configurator](https://github.com/wollomatic/socket-proxy-configurator).
 
 ### Allowing access
 
-Because of the secure-by-default design, you need to allow every access explicitly.
+Socket-proxy uses a secure-by-default design: you need to allow every access explicitly.
 
-This is meant to be an additional layer of security. It does not replace other security measures, such as firewalls, network segmentation, etc. Do not expose socket-proxy to a public network.
+This is an additional layer of security that does not replace other security measures such as firewalls, network segmentation, etc.
 
 #### Setting up the TCP listener
 
-Socket-proxy listens per default only on `127.0.0.1`. Depending on what you need, you may want to set another listener address with the `-listenip` parameter. In almost every use case, `-listenip=0.0.0.0` will be the correct configuration when using socket-proxy in a docker image.
+Socket-proxy's default behavior is to listen on `127.0.0.1`.
+It is possible to change the listening address using the `-listenip` parameter or the `SP_LISTENIP` environment variable.
+When using socket-proxy as a Docker container, configure the TCP listener to port `0.0.0.0` (e.g. `-listenip=0.0.0.0`) and ensure that it is on the same network as the container using it.
 
-#### Using a unix socket instead of a TCP listener
+**Do not expose socket-proxy to a public network!**
 
-If you want to proxy/filter the unix socket to a new unix socket instead to a TCP listener,
-you need to set the `-proxysocketendpoint` parameter or the `SP_PROXYSOCKETENDPOINT` env variable to the socket path of the new unix socket.
-This will also disable the TCP listener.
+```yaml
+services:
+  socket-proxy:
+    image: docker.io/wollomatic/socket-proxy:1
+    container_name: socket-proxy # Uses a fixed name for networking
+    command:
+      - '-allowfrom=dozzle' # Only allow the dozzle container
+      - '-listenip=0.0.0.0'
+      - '-allowHEAD=/_ping' # Example allow rule
+    expose:
+      - 2375 # Exposes port 2375 only to containers on the docker-proxy-net network
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks:
+      - docker-proxy-net # Uses a common network
+      
+  dozzle:
+    image: docker.io/amir20/dozzle:latest
+    container_name: dozzle # Uses a fixed name for allowfrom
+    depends_on:
+      - socket-proxy
+    environment:
+      DOZZLE_REMOTE_HOST: tcp://socket-proxy:2375 # Sets the TCP listener as a Docker socket
+    networks:
+      - docker-proxy-net # Uses a common network
 
-For example `-proxysocketendpoint=/tmp/filtered-socket.sock`
+# Example hardened network
+networks:
+  docker-proxy-net:
+    driver: bridge
+    internal: true
+    attachable: false
+
+```
+
+A full compose example is available [on the repository's wiki](https://github.com/wollomatic/socket-proxy/wiki#dozzle).
+
+#### Using a Unix socket instead of a TCP listener
+
+Socket-proxy can proxy the Unix socket to a new Unix socket instead of a TCP listener.
+This is enabled by setting the path of the proxied Unix socket with the `-proxysocketendpoint` parameter or the `SP_PROXYSOCKETENDPOINT` environment variable (e.g. `-proxysocketendpoint=/tmp/proxy.sock`).
+The Unix socket endpoint's file permissions default to `0600` and can be modified with the `-proxysocketendpointfilemode` parameter or the `SP_PROXYSOCKETENDPOINTFILEMODE` environment variable.
+Using this setting will also disable the TCP listener.
+When using a Unix socket proxy in a Docker environment, the socket's path should be in a volume mounted by both socket-proxy and the container using it.
+
+**Do not expose socket-proxy on a shared filesystem!**
+
+```yaml
+services:
+
+  socket-proxy:
+    image: docker.io/wollomatic/socket-proxy:1
+    environment:
+      SP_ALLOWFROM: traefik # Only allow the traefik container
+      SP_ALLOW_HEAD: /_ping # Example allow rule
+      SP_PROXYSOCKETENDPOINT: /socket/proxy.sock # Creates the Unix socket in the /socket-vol volume
+      SP_PROXYSOCKETENDPOINTFILEMODE: 0600
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - socket-vol:/socket-vol/ # Mounts a common volume
+    network_mode: none
+
+  traefik:
+    image: docker.io/traefik:v3
+    container_name: traefik # Uses a fixed name for allowfrom
+    depends_on:
+      - socket-proxy
+    volumes:
+      - socket-vol/proxy.sock:/var/run/docker.sock:ro # Mounts the proxied Unix socket as a Docker socket
+
+# Example hardened volume
+volumes:
+  socket-vol:
+    driver: local
+    driver_opts:
+      type: tmpfs
+      device: tmpfs
+      o: size=1k,uid=65530,gid=0,mode=0700,noexec
+```
+
+A full compose example is available [on the repository's wiki](https://github.com/wollomatic/socket-proxy/wiki#using-socket-instead-of-tcp-example-with-traefik).
 
 > [!NOTE]
-> Versions prior to 1.10.0 of socket-proxy set the default file permissions of the Unix socket to 0400, instead of 0600 as stated in the documentation.
+> Prior to version 1.10.0, socket-proxy was setting the Unix socket's default file permissions to `0400` instead of `0600`.
 
 #### Setting up the IP address or hostname allowlist
 
@@ -96,15 +173,11 @@ If both command-line parameter and environment variable are configured for a par
 
 Use Go's regexp syntax to create the patterns for these parameters. To avoid insecure configurations, `^` and `$` are added automatically to the start and end of the pattern. Note: invalid regexp results in program termination.
 
-Examples (command-line):
-+ `'-allowGET=/v1\..{1,2}/(version|containers/.*|events.*)'` could be used for allowing access to the docker socket for Traefik v2.
-+ `'-allowHEAD=.*'` allows all HEAD requests.
-+ `'-allowGET=/version -allowGET=/_ping'` supports using `-allowGET` multiple times
-
-Examples (env variables):
-+ `'SP_ALLOW_GET="/v1\..{1,2}/(version|containers/.*|events.*)"'` could be used for allowing access to the docker socket for Traefik v2.
-+ `'SP_ALLOW_HEAD=".*"'` allows all HEAD requests.
-+ `'SP_ALLOW_GET="/version" SP_ALLOW_GET_2="/_ping"'` supports multiple `SP_ALLOW_GET` entries
+| Examples                                         | Command-line parameters                                      | Environment variables                                             | Docker labels                                                             |
+| ------------------------------------------------ | ------------------------------------------------------------ | ----------------------------------------------------------------- | ------------------------------------------------------------------------- |
+| Allow access to the docker socket for Traefik v2 | `'-allowGET=/v1\..{1,2}/(version\|containers/.*\|events.*)'` | `'SP_ALLOW_GET="/v1\..{1,2}/(version\|containers/.*\|events.*)"'` | `'socket-proxy.allow.get=/v1\..{1,2}/(version\|containers/.*\|events.*)'` |
+| Allow all `HEAD` requests                        | `'-allowHEAD=.*'`                                            | `'SP_ALLOW_HEAD=".*"'`                                            | `'socket-proxy.allow.head=".*"'`                                          |
+| Support for multiple "allow `GET`" entries       | `'-allowGET=/version -allowGET=/_ping'`                      | `'SP_ALLOW_GET="/version" SP_ALLOW_GET_2="/_ping"'`               | `'socket-proxy.allow.get=/version socket-proxy.allow.get=/_ping'`         |
 
 For more information, refer to the [Go regexp documentation](https://golang.org/pkg/regexp/syntax/).
 
@@ -113,7 +186,7 @@ An excellent online regexp tester is [regex101.com](https://regex101.com/).
 To determine which HTTP requests your client application uses, you could switch socket-proxy to debug log level and look at the log output while allowing all requests in a secure environment.
 
 > [!NOTE]
-> Starting with version 1.12.0, the socket-proxy supports using multiple -allow* entries in params, environment, or docker labels.
+> Starting with version 1.12.0, socket-proxy supports using multiple -allow* entries in parameters, environment variables, and Docker labels.
 
 #### Setting up bind mount restrictions
 
@@ -134,8 +207,8 @@ Bind mount restrictions are applied to versioned and unversioned container, Swar
 
 Allowlists for both requests and bind mount restrictions can be specified for particular containers. To do this:
 
-1. Set `-proxycontainername` or the environment variable `SP_PROXYCONTAINERNAME` to the name of the socket proxy container.
-2. Make sure that each container that will use the socket proxy is in a Docker network that the socket proxy container is also in.
+1. Set the `-proxycontainername` parameter or the`SP_PROXYCONTAINERNAME` environment variable to the name of the socket-proxy container.
+2. Make sure that each container that will use the socket-proxy is in a Docker network that the socket-proxy container is also in.
 3. Use the same regex syntax for request allowlists and for bind mount restrictions that were discussed earlier, but for labels on each container that will use the socket proxy. Each label name has the prefix `<dockerlabelprefix>.allow.`; by default this is `socket-proxy.allow.`, with `socket-proxy.allow.bindmountfrom` for bind mount restrictions. Set `-dockerlabelprefix` or `SP_DOCKERLABELPREFIX` when multiple socket proxies share a Docker daemon. For example, `-dockerlabelprefix=traefik-socket-proxy` uses labels beginning with `traefik-socket-proxy.allow.`.
 
 ```yaml
@@ -168,7 +241,7 @@ Health checks are disabled by default. As the socket-proxy container may not be 
 ```
 ### Socket watchdog
 
-In certain circumstances (for example, after a Docker engine update), the socket connection may break, causing the client application to fail. To prevent this, the socket-proxy can be configured to check the socket availability at regular intervals. If the socket is not available, the socket-proxy will be stopped so the container orchestrator can restart it. This feature is disabled by default. To enable it, set the `-watchdoginterval` parameter (or `SP_WATCHDOGINTERVAL` env variable) to the desired interval in seconds and set the `-stoponwatchdog` parameter (or `SP_STOPONWATCHDOG=true`). If `-stoponwatchdog`is not set, the watchdog will only log an error message and continue to run (the problem would still exist in that case).
+In certain circumstances (e.g. after a Docker engine update), the socket connection may break, causing the client application to fail. To prevent this, the socket-proxy can be configured to check the socket availability at regular intervals. If the Docker socket is not available, the socket-proxy stops itself so the container orchestrator can restart it. This feature is disabled by default. To enable it, set the `-watchdoginterval` parameter (or `SP_WATCHDOGINTERVAL` environment variable) to the desired interval in seconds and set the `-stoponwatchdog` parameter (or `SP_STOPONWATCHDOG=true`). If `-stoponwatchdog` is not set, the watchdog will only log an error message and continue to run (the problem would still exist in that case).
 
 ### Example for proxying the docker socket to Traefik
 
@@ -222,7 +295,7 @@ networks:
 
 ### Examining the API calls of the client application
 
-To log the API calls of the client application, set the log level to `DEBUG` and allow all requests. Then, you can examine the log output to determine which requests the client application makes. Allowing all requests can be done by setting the following parameters:
+To log the API calls of the client application, set the log level (`-loglevel` or `SP_LOGLEVEL`) to `DEBUG` and allow all requests. Then, you can examine the log output to determine which requests the client application makes. Allowing all requests can be done by setting the following parameters:
 ```
 - '-loglevel=debug'
 - '-allowGET=.*'
@@ -236,9 +309,9 @@ To log the API calls of the client application, set the log level to `DEBUG` and
 - '-allowOPTIONS=.*'
 ```
 
-### all parameters and environment variables
+### All parameters and environment variables
 
-socket-proxy can be configured via command-line parameters or via environment variables. If both command-line parameters and environment variables are set, the environment variable will be ignored.
+socket-proxy can be configured via command-line parameters or environment variables. If both are set, the command-line parameters take priority and the environment variables are ignored.
 
 | Parameter                      | Environment Variable             | Default Value          | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
 |--------------------------------|----------------------------------|------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
