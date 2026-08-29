@@ -207,7 +207,7 @@ Bind mount restrictions are applied to versioned and unversioned container, Swar
 
 Allowlists for both requests and bind mount restrictions can be specified for particular containers. To do this:
 
-1. Set the `-proxycontainername` parameter or the`SP_PROXYCONTAINERNAME` environment variable to the name of the socket-proxy container.
+1. Set the `-proxycontainername` parameter or the `SP_PROXYCONTAINERNAME` environment variable to the name of the socket-proxy container.
 2. Make sure that each container that will use the socket-proxy is in a Docker network that the socket-proxy container is also in.
 3. Use the same regex syntax for request allowlists and for bind mount restrictions that were discussed earlier, but for labels on each container that will use the socket proxy. Each label name has the prefix `<dockerlabelprefix>.allow.`; by default this is `socket-proxy.allow.`, with `socket-proxy.allow.bindmountfrom` for bind mount restrictions. Set `-dockerlabelprefix` or `SP_DOCKERLABELPREFIX` when multiple socket proxies share a Docker daemon. For example, `-dockerlabelprefix=traefik-socket-proxy` uses labels beginning with `traefik-socket-proxy.allow.`.
 
