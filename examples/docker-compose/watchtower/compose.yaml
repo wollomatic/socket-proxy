@@ -7,7 +7,7 @@ services:
       - '-listenip=0.0.0.0'
       - '-shutdowngracetime=10'
       # this whitelists the API endpoints that watchtower needs:
-      - '-allowGET=/v1\..{2}/(containers/.*|images/.*)'
+      - '-allowGET=/v1\..{2}/(containers/.*|images/.*|info)'
       - '-allowPOST=/v1\..{2}/(containers/.*|images/.*|networks/.*)'
       - '-allowDELETE=/v1\..{2}/(containers/.*|images/.*)'
       - '-allowHEAD=/_ping'
