@@ -1,7 +1,7 @@
 # socket-proxy
 
 ## Latest image
-- `wollomatic/socket-proxy:1.13.1` / `ghcr.io/wollomatic/socket-proxy:1.13.1`
+- `wollomatic/socket-proxy:1.13.2` / `ghcr.io/wollomatic/socket-proxy:1.13.2`
 - `wollomatic/socket-proxy:1` / `ghcr.io/wollomatic/socket-proxy:1`
 
 > [!IMPORTANT]
@@ -172,6 +172,9 @@ It is also possible to configure the allowlist via environment variables. The va
 If both command-line parameter and environment variable are configured for a particular HTTP method, the environment variable is ignored.
 
 Use Go's regexp syntax to create the patterns for these parameters. To avoid insecure configurations, `^` and `$` are added automatically to the start and end of the pattern. Note: invalid regexp results in program termination.
+
+> [!WARNING]
+> When using alternatives (`|`), group the entire pattern so the automatically added `^` and `$` anchors apply to every alternative. Use `(/version|/_ping)` instead of `/version|/_ping`; the ungrouped pattern also allows paths such as `/version/anything` or `/anything/_ping`.
 
 | Examples                                         | Command-line parameters                                      | Environment variables                                             | Docker labels                                                             |
 | ------------------------------------------------ | ------------------------------------------------------------ | ----------------------------------------------------------------- | ------------------------------------------------------------------------- |
