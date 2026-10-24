@@ -10,9 +10,12 @@ RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} \
     -o / ./...
 
 FROM scratch
-LABEL org.opencontainers.image.source=https://github.com/wollomatic/socket-proxy \
-      org.opencontainers.image.description="A lightweight and secure unix socket proxy" \
-      org.opencontainers.image.licenses=MIT
+LABEL org.opencontainers.image.title="wollomatic/socket-proxy" \
+      org.opencontainers.image.description="A lightweight Unix socket proxy with configurable access controls" \
+      org.opencontainers.image.url="https://github.com/wollomatic/socket-proxy" \
+      org.opencontainers.image.source="https://github.com/wollomatic/socket-proxy" \
+      org.opencontainers.image.documentation="https://github.com/wollomatic/socket-proxy/blob/main/README.md" \
+      org.opencontainers.image.licenses="MIT AND Apache-2.0"
 USER 65534:65534
 VOLUME /var/run/docker.sock
 EXPOSE 2375
