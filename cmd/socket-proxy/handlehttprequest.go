@@ -38,7 +38,10 @@ func handleHTTPRequest(w http.ResponseWriter, r *http.Request) {
 
 	// finally, log and proxy the request
 	slog.Debug("allowed request", "method", r.Method, "URL", r.URL, "client", r.RemoteAddr) // #nosec G706 - structured logging (slog) safely encodes values
-	socketProxy.ServeHTTP(w, r)                                                             // #nosec G704 - Request target is always the specified socket
+	// Docker streams the build response while still reading the request body
+	// (BuildKit build context); HTTP/1 handlers are half-duplex by default.
+	_ = http.NewResponseController(w).EnableFullDuplex()
+	socketProxy.ServeHTTP(w, r) // #nosec G704 - Request target is always the specified socket
 }
 
 func matchURL(allowedURIs []*regexp.Regexp, requestURI string) bool {
