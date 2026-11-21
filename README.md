@@ -364,6 +364,8 @@ socket-proxy can be configured via command-line parameters or environment variab
 
 1.13 - harden bind mount restrictions (thanks [@shotintoeternity](https://github.com/shotintoeternity)), improve Docker label handling, fix IPv6 healthcheck bug
 
+1.14 - fix intermittent `unexpected EOF` errors during Docker builds when the daemon responds before the build context upload finishes (thanks [@fajxo](https://github.com/fajxo), [#197](https://github.com/wollomatic/socket-proxy/issues/197))
+
 ## License
 
 Parts of this project, specifically the file `cmd/socket-proxy/bindmount.go` and
@@ -382,3 +384,4 @@ The rest of the project is licensed under the MIT License – see the [LICENSE](
 
 + [hectorm/cetusguard](https://github.com/hectorm/cetusguard)
 + [11notes/docker-socket-proxy](https://github.com/11notes/docker-socket-proxy)
++ [CodesWhat/sockguard](https://github.com/CodesWhat/sockguard)
