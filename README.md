@@ -1,7 +1,7 @@
 # socket-proxy
 
 ## Latest image
-- `wollomatic/socket-proxy:1.13.2` / `ghcr.io/wollomatic/socket-proxy:1.13.2`
+- `wollomatic/socket-proxy:1.14.0` / `ghcr.io/wollomatic/socket-proxy:1.14.0`
 - `wollomatic/socket-proxy:1` / `ghcr.io/wollomatic/socket-proxy:1`
 
 > [!IMPORTANT]
@@ -37,7 +37,7 @@ Some examples can be found in this repository's [wiki](https://github.com/wollom
 The container image is available on [Docker Hub (wollomatic/socket-proxy)](https://hub.docker.com/r/wollomatic/socket-proxy) 
 and on the [GitHub Container Registry (ghcr.io/wollomatic/socket-proxy)](https://github.com/wollomatic/socket-proxy/pkgs/container/socket-proxy).
 
-To pin one specific version, use the version tag (for example, `wollomatic/socket-proxy:1.13.0` or `ghcr.io/wollomatic/socket-proxy:1.13.0`).
+To pin one specific version, use the version tag (for example, `wollomatic/socket-proxy:1.14.0` or `ghcr.io/wollomatic/socket-proxy:1.14.0`).
 To always use the most recent version, use the `1` tag (`wollomatic/socket-proxy:1` or `ghcr.io/wollomatic/socket-proxy:1`). This tag will be valid as long as there is no breaking change in the deployment.
 
 There may be an additional docker image with the `testing`-tag. This image is only for testing. Likely, documentation for the `testing` image could only be found in the GitHub commit messages. It is not recommended to use the `testing` image in production.
@@ -362,7 +362,7 @@ socket-proxy can be configured via command-line parameters or environment variab
 
 1.12 - support use of allow* multiple times in env, flag and docker labels (thanks [@qianlongzt](https://github.com/qianlongzt))
 
-1.13 - harden bind mount restrictions (thanks [@shotintoeternity]), improve Docker label handling, fix IPv6 healthcheck bug
+1.13 - harden bind mount restrictions (thanks [@shotintoeternity](https://github.com/shotintoeternity)), improve Docker label handling, fix IPv6 healthcheck bug
 
 ## License
 
